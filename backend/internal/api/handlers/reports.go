@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -23,16 +22,21 @@ func NewReportHandler(pool *pgxpool.Pool) *ReportHandler {
 
 func (h *ReportHandler) Monthly(c *gin.Context) {
 	userID := c.GetString("user_id")
-	month := c.DefaultQuery("month", time.Now().Format("2006-01"))
+	month := c.Query("month")
 
-	start, err := time.Parse("2006-01", month)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid month format, use YYYY-MM"})
-		return
+	var startDate, endDate string
+	if month != "" {
+		start, err := time.Parse("2006-01", month)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid month format, use YYYY-MM"})
+			return
+		}
+		end := start.AddDate(0, 1, 0)
+		startDate = start.Format("2006-01-02")
+		endDate = end.Format("2006-01-02")
 	}
-	end := start.AddDate(0, 1, 0)
 
-	summary, err := h.buildSummary(userID, start.Format("2006-01-02"), end.Format("2006-01-02"))
+	summary, err := h.buildSummary(userID, startDate, endDate)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate report"})
 		return
@@ -105,18 +109,16 @@ func (h *ReportHandler) Trends(c *gin.Context) {
 		months = 6
 	}
 
-	start := time.Now().AddDate(0, -months, 0)
-	startStr := fmt.Sprintf("%s-01", start.Format("2006-01"))
-
 	rows, err := h.pool.Query(context.Background(), `
-		SELECT TO_CHAR(transaction_date, 'YYYY-MM') as month,
-		       COALESCE(SUM(CASE WHEN txn_type = 'credit' THEN amount ELSE 0 END), 0) as income,
-		       COALESCE(SUM(CASE WHEN txn_type = 'debit' THEN amount ELSE 0 END), 0) as expenses
-		FROM transactions
-		WHERE user_id = $1 AND transaction_date >= $2
+		SELECT TO_CHAR(t.transaction_date, 'YYYY-MM') as month,
+		       COALESCE(SUM(CASE WHEN t.txn_type = 'credit' AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0) as income,
+		       COALESCE(SUM(CASE WHEN t.txn_type = 'debit'  AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0) as expenses
+		FROM transactions t
+		LEFT JOIN categories c ON t.category_id = c.id
+		WHERE t.user_id = $1
 		GROUP BY month
 		ORDER BY month`,
-		userID, startStr)
+		userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query trends"})
 		return
@@ -138,28 +140,64 @@ func (h *ReportHandler) Trends(c *gin.Context) {
 }
 
 func (h *ReportHandler) buildSummary(userID, startDate, endDate string) (*models.ReportSummary, error) {
-	var totalIncome, totalExpenses float64
-	err := h.pool.QueryRow(context.Background(), `
-		SELECT
-			COALESCE(SUM(CASE WHEN txn_type = 'credit' THEN amount ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN txn_type = 'debit' THEN amount ELSE 0 END), 0)
-		FROM transactions
-		WHERE user_id = $1 AND transaction_date >= $2 AND transaction_date < $3`,
-		userID, startDate, endDate,
-	).Scan(&totalIncome, &totalExpenses)
-	if err != nil {
-		return nil, err
+	var totalIncome, totalExpenses, totalTransfers float64
+	allTime := startDate == "" || endDate == ""
+
+	if allTime {
+		err := h.pool.QueryRow(context.Background(), `
+			SELECT
+				COALESCE(SUM(CASE WHEN txn_type = 'credit' AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0),
+				COALESCE(SUM(CASE WHEN txn_type = 'debit'  AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0),
+				COALESCE(SUM(CASE WHEN c.name = 'Transfer' THEN t.amount ELSE 0 END), 0)
+			FROM transactions t
+			LEFT JOIN categories c ON t.category_id = c.id
+			WHERE t.user_id = $1`,
+			userID,
+		).Scan(&totalIncome, &totalExpenses, &totalTransfers)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		err := h.pool.QueryRow(context.Background(), `
+			SELECT
+				COALESCE(SUM(CASE WHEN txn_type = 'credit' AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0),
+				COALESCE(SUM(CASE WHEN txn_type = 'debit'  AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0),
+				COALESCE(SUM(CASE WHEN c.name = 'Transfer' THEN t.amount ELSE 0 END), 0)
+			FROM transactions t
+			LEFT JOIN categories c ON t.category_id = c.id
+			WHERE t.user_id = $1 AND t.transaction_date >= $2 AND t.transaction_date < $3`,
+			userID, startDate, endDate,
+		).Scan(&totalIncome, &totalExpenses, &totalTransfers)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	rows, err := h.pool.Query(context.Background(), `
-		SELECT c.id, c.name, c.color, c.icon,
-		       COALESCE(SUM(t.amount), 0), COUNT(t.id)
-		FROM categories c
-		JOIN transactions t ON t.category_id = c.id
-		WHERE t.user_id = $1 AND t.transaction_date >= $2 AND t.transaction_date < $3
-		GROUP BY c.id, c.name, c.color, c.icon
-		ORDER BY SUM(t.amount) DESC`,
-		userID, startDate, endDate)
+	var catQuery string
+	var catArgs []interface{}
+	if allTime {
+		catQuery = `
+			SELECT c.id, c.name, c.color, c.icon,
+			       COALESCE(SUM(t.amount), 0), COUNT(t.id)
+			FROM categories c
+			JOIN transactions t ON t.category_id = c.id
+			WHERE t.user_id = $1
+			GROUP BY c.id, c.name, c.color, c.icon
+			ORDER BY SUM(t.amount) DESC`
+		catArgs = []interface{}{userID}
+	} else {
+		catQuery = `
+			SELECT c.id, c.name, c.color, c.icon,
+			       COALESCE(SUM(t.amount), 0), COUNT(t.id)
+			FROM categories c
+			JOIN transactions t ON t.category_id = c.id
+			WHERE t.user_id = $1 AND t.transaction_date >= $2 AND t.transaction_date < $3
+			GROUP BY c.id, c.name, c.color, c.icon
+			ORDER BY SUM(t.amount) DESC`
+		catArgs = []interface{}{userID, startDate, endDate}
+	}
+
+	rows, err := h.pool.Query(context.Background(), catQuery, catArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -175,9 +213,10 @@ func (h *ReportHandler) buildSummary(userID, startDate, endDate string) (*models
 	}
 
 	return &models.ReportSummary{
-		TotalIncome:   totalIncome,
-		TotalExpenses: totalExpenses,
-		Net:           totalIncome - totalExpenses,
-		ByCategory:    cats,
+		TotalIncome:    totalIncome,
+		TotalExpenses:  totalExpenses,
+		TotalTransfers: totalTransfers,
+		Net:            totalIncome - totalExpenses,
+		ByCategory:     cats,
 	}, nil
 }

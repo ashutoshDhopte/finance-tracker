@@ -32,6 +32,7 @@ export default function TransactionsPage() {
   // Filters
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
+  const [filterAccount, setFilterAccount] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
@@ -49,6 +50,7 @@ export default function TransactionsPage() {
       const data = await api.getTransactions({
         search: search || undefined,
         category_id: filterCategory || undefined,
+        account_id: filterAccount || undefined,
         txn_type: filterType || undefined,
         start_date: filterStart || undefined,
         end_date: filterEnd || undefined,
@@ -62,7 +64,7 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, filterCategory, filterType, filterStart, filterEnd, page]);
+  }, [search, filterCategory, filterAccount, filterType, filterStart, filterEnd, page]);
 
   useEffect(() => {
     api.getCategories().then((d) => setCategories(d.categories)).catch(() => {});
@@ -87,13 +89,14 @@ export default function TransactionsPage() {
   function clearFilters() {
     setSearch("");
     setFilterCategory("");
+    setFilterAccount("");
     setFilterType("");
     setFilterStart("");
     setFilterEnd("");
     setPage(0);
   }
 
-  const hasFilters = search || filterCategory || filterType || filterStart || filterEnd;
+  const hasFilters = search || filterCategory || filterAccount || filterType || filterStart || filterEnd;
 
   return (
     <div className="space-y-6">
@@ -150,7 +153,7 @@ export default function TransactionsPage() {
 
       {/* Expanded filters */}
       {showFilters && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <div>
             <label className="block text-xs text-zinc-400 mb-1">Category</label>
             <select
@@ -160,6 +163,21 @@ export default function TransactionsPage() {
             >
               <option value="">All categories</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">Account</label>
+            <select
+              value={filterAccount}
+              onChange={(e) => { setFilterAccount(e.target.value); setPage(0); }}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="">All accounts</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.institution}){a.last_four ? ` ••${a.last_four}` : ""}
+                </option>
+              ))}
             </select>
           </div>
           <div>
@@ -198,12 +216,12 @@ export default function TransactionsPage() {
       {/* Transaction list */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
         {/* Table header */}
-        <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 px-5 py-3 border-b border-zinc-800 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+        <div className="hidden sm:grid grid-cols-[40%_18%_15%_15%_12%] px-5 py-3 border-b border-zinc-800 text-xs font-medium text-zinc-500 uppercase tracking-wider">
           <span>Transaction</span>
-          <span className="w-28">Category</span>
-          <span className="w-24 text-right">Amount</span>
-          <span className="w-24 text-right">Date</span>
-          <span className="w-20" />
+          <span>Category</span>
+          <span className="text-right">Amount</span>
+          <span className="text-right">Date</span>
+          <span />
         </div>
 
         {loading ? (
@@ -217,25 +235,25 @@ export default function TransactionsPage() {
             {transactions.map((txn) => (
               <div
                 key={txn.id}
-                className="px-5 py-3 flex flex-col sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto] gap-2 sm:gap-4 items-start sm:items-center hover:bg-zinc-800/40 transition-colors"
+                className="px-5 py-3 flex flex-col sm:grid sm:grid-cols-[40%_18%_15%_15%_12%] gap-2 items-start sm:items-center hover:bg-zinc-800/40 transition-colors"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${txn.txn_type === "credit" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>
                     {txn.txn_type === "credit" ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{txn.merchant_name || "Unknown"}</p>
-                    {txn.notes && <p className="text-xs text-zinc-500 truncate">{txn.notes}</p>}
+                    <p className="text-sm font-medium text-white break-words">{txn.merchant_name || "Unknown"}</p>
+                    {txn.notes && <p className="text-xs text-zinc-500 break-words">{txn.notes}</p>}
                   </div>
                 </div>
-                <span className="w-28 text-xs text-zinc-400 bg-zinc-800 px-2 py-1 rounded-md truncate">
+                <span className="text-xs text-zinc-400 bg-zinc-800 px-2 py-1 rounded-md break-words">
                   {txn.category_name || "—"}
                 </span>
-                <span className={`w-24 text-right text-sm font-mono font-medium ${txn.txn_type === "credit" ? "text-emerald-400" : "text-red-400"}`}>
+                <span className={`text-right text-sm font-mono font-medium ${txn.txn_type === "credit" ? "text-emerald-400" : "text-red-400"}`}>
                   {txn.txn_type === "credit" ? "+" : "-"}{formatCurrency(txn.amount)}
                 </span>
-                <span className="w-24 text-right text-xs text-zinc-500">{formatDate(txn.transaction_date)}</span>
-                <div className="w-20 flex justify-end gap-1">
+                <span className="text-right text-xs text-zinc-500">{formatDate(txn.transaction_date)}</span>
+                <div className="flex justify-end gap-1">
                   <button
                     onClick={() => setEditingTxn(txn)}
                     className="p-1.5 text-zinc-500 hover:text-white transition-colors cursor-pointer"
@@ -315,7 +333,7 @@ export default function TransactionsPage() {
       </Modal>
 
       {/* CSV import modal */}
-      <CSVImportModal open={showImport} onClose={() => setShowImport(false)} onDone={loadTransactions} />
+      <CSVImportModal open={showImport} onClose={() => setShowImport(false)} onDone={loadTransactions} accounts={accounts} />
     </div>
   );
 }
@@ -476,8 +494,9 @@ function TransactionFormModal({
   );
 }
 
-function CSVImportModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+function CSVImportModal({ open, onClose, onDone, accounts }: { open: boolean; onClose: () => void; onDone: () => void; accounts: Account[] }) {
   const [file, setFile] = useState<File | null>(null);
+  const [accountId, setAccountId] = useState("");
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [error, setError] = useState("");
@@ -487,7 +506,7 @@ function CSVImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
     setImporting(true);
     setError("");
     try {
-      const res = await api.importCSV(file);
+      const res = await api.importCSV(file, accountId || undefined);
       setResult(res);
       onDone();
     } catch (err) {
@@ -499,6 +518,7 @@ function CSVImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
 
   function handleClose() {
     setFile(null);
+    setAccountId("");
     setResult(null);
     setError("");
     onClose();
@@ -524,6 +544,23 @@ function CSVImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
         <div className="space-y-4">
           <p className="text-zinc-400 text-sm">Upload a CSV file from Chase or PNC. The format will be auto-detected.</p>
           {error && <p className="text-red-400 text-sm bg-red-500/10 rounded-lg px-3 py-2">{error}</p>}
+
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">Bank account</label>
+            <select
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="">None</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.institution}){a.last_four ? ` ••${a.last_four}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div
             className="border-2 border-dashed border-zinc-700 rounded-xl p-8 text-center hover:border-zinc-500 transition-colors cursor-pointer"
             onClick={() => document.getElementById("csv-input")?.click()}

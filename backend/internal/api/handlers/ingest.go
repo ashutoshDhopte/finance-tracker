@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,6 +37,11 @@ func (h *IngestHandler) ImportCSV(c *gin.Context) {
 	defer file.Close()
 
 	bankType := c.DefaultPostForm("bank", "auto")
+	accountID := c.PostForm("account_id")
+	var accountIDPtr *string
+	if accountID != "" {
+		accountIDPtr = &accountID
+	}
 
 	reader := csv.NewReader(file)
 	records, err := reader.ReadAll()
@@ -52,13 +58,15 @@ func (h *IngestHandler) ImportCSV(c *gin.Context) {
 	if bankType == "auto" {
 		bankType = detectBank(records[0])
 	}
+	log.Printf("CSV import: %d rows, bank=%s, headers=%v", len(records)-1, bankType, records[0])
 
 	var imported, skipped, failed int
 	dedupSvc := dedup.NewService(h.pool)
 
-	for _, row := range records[1:] {
+	for i, row := range records[1:] {
 		txn, err := parseCSVRow(row, bankType)
 		if err != nil {
+			log.Printf("CSV row %d parse error: %v (row: %v)", i+1, err, row)
 			failed++
 			continue
 		}
@@ -86,14 +94,15 @@ func (h *IngestHandler) ImportCSV(c *gin.Context) {
 		}
 
 		_, err = h.pool.Exec(context.Background(), `
-			INSERT INTO transactions (user_id, amount, currency, merchant_name,
+			INSERT INTO transactions (user_id, account_id, amount, currency, merchant_name,
 			                         category_id, transaction_date, txn_type,
 			                         source, source_hash)
-			VALUES ($1, $2, 'USD', $3, $4, $5, $6, 'csv', $7)`,
-			userID, txn.amount, txn.merchant, categoryID,
+			VALUES ($1, $2, $3, 'USD', $4, $5, $6, $7, 'csv', $8)`,
+			userID, accountIDPtr, txn.amount, txn.merchant, categoryID,
 			txn.date, txn.txnType, hash,
 		)
 		if err != nil {
+			log.Printf("CSV row %d insert error: %v", i+1, err)
 			failed++
 			continue
 		}
@@ -118,7 +127,7 @@ type csvTransaction struct {
 
 func detectBank(headers []string) string {
 	joined := strings.ToLower(strings.Join(headers, ","))
-	if strings.Contains(joined, "posting date") || strings.Contains(joined, "details") {
+	if strings.Contains(joined, "post date") || strings.Contains(joined, "posting date") {
 		return "chase"
 	}
 	if strings.Contains(joined, "withdrawal") || strings.Contains(joined, "deposit") {
@@ -190,6 +199,7 @@ func parsePNCRow(row []string) (*csvTransaction, error) {
 
 	amountStr = strings.ReplaceAll(amountStr, "$", "")
 	amountStr = strings.ReplaceAll(amountStr, ",", "")
+	amountStr = strings.ReplaceAll(amountStr, " ", "")
 	amount, err := strconv.ParseFloat(amountStr, 64)
 	if err != nil {
 		return nil, err
@@ -218,6 +228,7 @@ func parseGenericRow(row []string) (*csvTransaction, error) {
 
 	amountStr := strings.ReplaceAll(row[2], "$", "")
 	amountStr = strings.ReplaceAll(amountStr, ",", "")
+	amountStr = strings.ReplaceAll(amountStr, " ", "")
 	amount, err := strconv.ParseFloat(strings.TrimSpace(amountStr), 64)
 	if err != nil {
 		return nil, err

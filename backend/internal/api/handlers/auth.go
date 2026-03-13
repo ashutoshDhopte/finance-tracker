@@ -49,12 +49,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	now := time.Now()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":      id,
 		"username": username,
-		"iat":      now.Unix(),
-		"exp":      now.Add(h.cfg.JWT.Expiry).Unix(),
+		"iat":      time.Now().Unix(),
 	})
 
 	tokenStr, err := token.SignedString([]byte(h.cfg.JWT.Secret))
@@ -64,7 +62,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"token":      tokenStr,
-		"expires_at": now.Add(h.cfg.JWT.Expiry).Format(time.RFC3339),
+		"token": tokenStr,
 	})
 }

@@ -32,13 +32,13 @@ services:
       DB_PASSWORD: finance_secret
       DB_NAME: finance_tracker
       DB_SSLMODE: disable
-      JWT_SECRET: change-me-to-a-random-secret
+      JWT_SECRET: X2Kc7LNkR8t2GkqZixpUObbOk7WZ5CMivIYO/rmMP8I=
       OLLAMA_URL: http://host.docker.internal:11434
       SERVER_PORT: 8080
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: changeme123
       GMAIL_POLL_INTERVAL: 15m
-      GMAIL_QUERY: "from:(alerts@pnc.com OR no.reply.alerts@chase.com OR alert@chase.com)"
+      GMAIL_QUERY: "from:(pncalerts@visa.com OR no.reply.alerts@chase.com OR pncalerts@pnc.com)"
     volumes:
       - ./backend/credentials.json:/app/credentials.json:ro
       - ./backend/token.json:/app/token.json

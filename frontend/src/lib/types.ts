@@ -58,6 +58,7 @@ export interface Account {
   name: string;
   institution: string;
   account_type: "checking" | "savings" | "credit_card" | "investment";
+  last_four?: string;
   last_synced_at?: string;
   created_at: string;
   updated_at: string;
@@ -66,6 +67,7 @@ export interface Account {
 export interface ReportSummary {
   total_income: number;
   total_expenses: number;
+  total_transfers: number;
   net: number;
   by_category: CategorySummary[];
 }

@@ -1,10 +1,11 @@
 package models
 
 type ReportSummary struct {
-	TotalIncome   float64           `json:"total_income"`
-	TotalExpenses float64           `json:"total_expenses"`
-	Net           float64           `json:"net"`
-	ByCategory    []CategorySummary `json:"by_category"`
+	TotalIncome    float64           `json:"total_income"`
+	TotalExpenses  float64           `json:"total_expenses"`
+	TotalTransfers float64           `json:"total_transfers"`
+	Net            float64           `json:"net"`
+	ByCategory     []CategorySummary `json:"by_category"`
 }
 
 type CategorySummary struct {

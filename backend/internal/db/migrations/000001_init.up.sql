@@ -23,9 +23,11 @@ CREATE TABLE accounts (
     name VARCHAR(200) NOT NULL,
     institution VARCHAR(200) NOT NULL,
     account_type account_type NOT NULL,
+    last_four VARCHAR(4),
     last_synced_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, last_four)
 );
 
 CREATE INDEX idx_accounts_user_id ON accounts(user_id);

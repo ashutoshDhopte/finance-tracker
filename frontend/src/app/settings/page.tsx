@@ -18,6 +18,7 @@ import {
   Mail,
   RefreshCw,
   Check,
+  Pencil,
 } from "lucide-react";
 
 const ACCOUNT_ICONS: Record<string, React.ReactNode> = {
@@ -33,6 +34,7 @@ export default function SettingsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [showAddAlert, setShowAddAlert] = useState(false);
 
   async function load() {
@@ -117,9 +119,18 @@ export default function SettingsPage() {
                     {ACCOUNT_ICONS[acc.account_type] || <Building2 className="w-5 h-5" />}
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-white">{acc.name}</p>
+                    <p className="text-sm font-medium text-white">
+                      {acc.name}
+                      {acc.last_four && <span className="text-zinc-500 font-mono ml-1.5">••{acc.last_four}</span>}
+                    </p>
                     <p className="text-xs text-zinc-500">{acc.institution} &middot; {acc.account_type.replace("_", " ")}</p>
                   </div>
+                  <button
+                    onClick={() => setEditingAccount(acc)}
+                    className="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
                 </div>
                 {acc.last_synced_at && (
                   <p className="text-xs text-zinc-600 mt-3">Last synced: {formatDate(acc.last_synced_at)}</p>
@@ -204,6 +215,16 @@ export default function SettingsPage() {
       {/* Add account modal */}
       <AddAccountModal open={showAddAccount} onClose={() => setShowAddAccount(false)} onCreated={load} />
 
+      {/* Edit account modal */}
+      {editingAccount && (
+        <EditAccountModal
+          open
+          account={editingAccount}
+          onClose={() => setEditingAccount(null)}
+          onSaved={load}
+        />
+      )}
+
       {/* Add alert modal */}
       <AddAlertModal open={showAddAlert} onClose={() => setShowAddAlert(false)} categories={categories} onCreated={load} />
     </div>
@@ -214,6 +235,7 @@ function AddAccountModal({ open, onClose, onCreated }: { open: boolean; onClose:
   const [name, setName] = useState("");
   const [institution, setInstitution] = useState("");
   const [accountType, setAccountType] = useState("checking");
+  const [lastFour, setLastFour] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -222,10 +244,16 @@ function AddAccountModal({ open, onClose, onCreated }: { open: boolean; onClose:
     setSaving(true);
     setError("");
     try {
-      await api.createAccount({ name, institution, account_type: accountType });
+      await api.createAccount({
+        name,
+        institution,
+        account_type: accountType,
+        last_four: lastFour || undefined,
+      });
       setName("");
       setInstitution("");
       setAccountType("checking");
+      setLastFour("");
       onClose();
       onCreated();
     } catch (err) {
@@ -247,7 +275,7 @@ function AddAccountModal({ open, onClose, onCreated }: { open: boolean; onClose:
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            placeholder="e.g. PNC Checking"
+            placeholder="e.g. PNC Spend"
             required
           />
         </div>
@@ -264,18 +292,32 @@ function AddAccountModal({ open, onClose, onCreated }: { open: boolean; onClose:
           />
         </div>
 
-        <div>
-          <label className="block text-xs text-zinc-400 mb-1">Type</label>
-          <select
-            value={accountType}
-            onChange={(e) => setAccountType(e.target.value)}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="checking">Checking</option>
-            <option value="savings">Savings</option>
-            <option value="credit_card">Credit Card</option>
-            <option value="investment">Investment</option>
-          </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">Type</label>
+            <select
+              value={accountType}
+              onChange={(e) => setAccountType(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="checking">Checking</option>
+              <option value="savings">Savings</option>
+              <option value="credit_card">Credit Card</option>
+              <option value="investment">Investment</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">Last 4 digits</label>
+            <input
+              type="text"
+              value={lastFour}
+              onChange={(e) => setLastFour(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              placeholder="1234"
+              maxLength={4}
+              pattern="\d{4}"
+            />
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 pt-2">
@@ -284,6 +326,102 @@ function AddAccountModal({ open, onClose, onCreated }: { open: boolean; onClose:
           </button>
           <button type="submit" disabled={saving} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-500 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed">
             {saving ? "Adding..." : "Add Account"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function EditAccountModal({ open, account, onClose, onSaved }: { open: boolean; account: Account; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(account.name);
+  const [institution, setInstitution] = useState(account.institution);
+  const [accountType, setAccountType] = useState<string>(account.account_type);
+  const [lastFour, setLastFour] = useState(account.last_four || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await api.updateAccount(account.id, {
+        name,
+        institution,
+        account_type: accountType,
+        last_four: lastFour || null,
+      });
+      onClose();
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Edit Account">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <p className="text-red-400 text-sm bg-red-500/10 rounded-lg px-3 py-2">{error}</p>}
+
+        <div>
+          <label className="block text-xs text-zinc-400 mb-1">Account name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-zinc-400 mb-1">Institution</label>
+          <input
+            type="text"
+            value={institution}
+            onChange={(e) => setInstitution(e.target.value)}
+            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">Type</label>
+            <select
+              value={accountType}
+              onChange={(e) => setAccountType(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="checking">Checking</option>
+              <option value="savings">Savings</option>
+              <option value="credit_card">Credit Card</option>
+              <option value="investment">Investment</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">Last 4 digits</label>
+            <input
+              type="text"
+              value={lastFour}
+              onChange={(e) => setLastFour(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              placeholder="1234"
+              maxLength={4}
+              pattern="\d{0,4}"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg text-sm hover:bg-zinc-700 cursor-pointer">
+            Cancel
+          </button>
+          <button type="submit" disabled={saving} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-500 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed">
+            {saving ? "Saving..." : "Save Changes"}
           </button>
         </div>
       </form>

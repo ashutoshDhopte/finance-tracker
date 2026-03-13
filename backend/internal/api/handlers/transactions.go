@@ -80,6 +80,14 @@ func (h *TransactionHandler) List(c *gin.Context) {
 		argIdx++
 	}
 
+	countQuery := strings.Replace(query, `SELECT t.id, t.user_id, t.account_id, t.amount, t.currency,
+		       t.merchant_name, t.merchant_raw, t.category_id, c.name as category_name,
+		       t.transaction_date, t.posted_date, t.txn_type, t.source,
+		       t.source_hash, t.ai_confidence, t.raw_text, t.notes,
+		       t.created_at, t.updated_at`, "SELECT COUNT(*)", 1)
+	var totalCount int
+	_ = h.pool.QueryRow(context.Background(), countQuery, args...).Scan(&totalCount)
+
 	query += fmt.Sprintf(" ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
 	args = append(args, limit, offset)
 
@@ -106,7 +114,7 @@ func (h *TransactionHandler) List(c *gin.Context) {
 		txns = append(txns, t)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"transactions": txns, "count": len(txns)})
+	c.JSON(http.StatusOK, gin.H{"transactions": txns, "count": totalCount})
 }
 
 func (h *TransactionHandler) Get(c *gin.Context) {

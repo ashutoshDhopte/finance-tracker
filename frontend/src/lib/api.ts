@@ -61,8 +61,8 @@ class ApiClient {
   }
 
   // Auth
-  async login(username: string, password: string): Promise<{ token: string; expires_at: string }> {
-    const data = await this.request<{ token: string; expires_at: string }>("/auth/login", {
+  async login(username: string, password: string): Promise<{ token: string }> {
+    const data = await this.request<{ token: string }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     });
@@ -139,6 +139,7 @@ class ApiClient {
     name: string;
     institution: string;
     account_type: string;
+    last_four?: string;
   }): Promise<{ id: string }> {
     return this.request("/accounts", {
       method: "POST",
@@ -146,7 +147,23 @@ class ApiClient {
     });
   }
 
+  async updateAccount(id: string, data: {
+    name?: string;
+    institution?: string;
+    account_type?: string;
+    last_four?: string | null;
+  }): Promise<void> {
+    await this.request(`/accounts/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
   // Reports
+  async getSummary(): Promise<ReportSummary> {
+    return this.request("/reports/monthly");
+  }
+
   async getMonthlyReport(month: string): Promise<ReportSummary> {
     return this.request(`/reports/monthly?month=${month}`);
   }
@@ -201,16 +218,19 @@ class ApiClient {
   }
 
   // CSV Import
-  async importCSV(file: File): Promise<{ imported: number; skipped: number; failed: number }> {
-    const text = await file.text();
+  async importCSV(file: File, accountId?: string): Promise<{ imported: number; skipped: number; failed: number }> {
     const token = this.getToken();
+    const formData = new FormData();
+    formData.append("file", file);
+    if (accountId) {
+      formData.append("account_id", accountId);
+    }
     const res = await fetch(`${API_BASE}/transactions/import/csv`, {
       method: "POST",
       headers: {
-        "Content-Type": "text/csv",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: text,
+      body: formData,
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));

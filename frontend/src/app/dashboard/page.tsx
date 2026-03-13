@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { formatCurrency, formatDate, getCurrentMonth, formatMonth } from "@/lib/utils";
+import { formatCurrency, formatDate, formatMonth } from "@/lib/utils";
 import type { Transaction, ReportSummary, TrendPoint, TriggeredAlert } from "@/lib/types";
 import {
   TrendingUp,
   TrendingDown,
   Wallet,
+  ArrowLeftRight,
   AlertTriangle,
   ArrowUpRight,
   ArrowDownRight,
@@ -35,9 +36,8 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        const month = getCurrentMonth();
         const [summaryData, txnData, trendData, alertData] = await Promise.all([
-          api.getMonthlyReport(month),
+          api.getSummary(),
           api.getTransactions({ limit: 8 }),
           api.getTrends(6),
           api.checkAlerts(),
@@ -73,7 +73,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-        <p className="text-zinc-400 text-sm mt-1">{formatMonth(getCurrentMonth())} overview</p>
+        <p className="text-zinc-400 text-sm mt-1">All time overview</p>
       </div>
 
       {/* Triggered alerts */}
@@ -97,7 +97,7 @@ export default function DashboardPage() {
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
           label="Income"
           amount={summary?.total_income ?? 0}
@@ -109,6 +109,12 @@ export default function DashboardPage() {
           amount={summary?.total_expenses ?? 0}
           icon={<TrendingDown className="w-5 h-5" />}
           color="red"
+        />
+        <SummaryCard
+          label="Transfers"
+          amount={summary?.total_transfers ?? 0}
+          icon={<ArrowLeftRight className="w-5 h-5" />}
+          color="blue"
         />
         <SummaryCard
           label="Net"

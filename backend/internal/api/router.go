@@ -46,6 +46,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, parserSvc *parser.Service
 
 			auth.GET("/accounts", accHandler.List)
 			auth.POST("/accounts", accHandler.Create)
+			auth.PUT("/accounts/:id", accHandler.Update)
 
 			auth.GET("/reports/monthly", reportHandler.Monthly)
 			auth.GET("/reports/biweekly", reportHandler.Biweekly)

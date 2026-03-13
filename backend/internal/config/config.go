@@ -25,7 +25,6 @@ type DBConfig struct {
 
 type JWTConfig struct {
 	Secret string
-	Expiry time.Duration
 }
 
 type OllamaConfig struct {
@@ -70,8 +69,7 @@ func Load() (*Config, error) {
 			URL: dbURL,
 		},
 		JWT: JWTConfig{
-			Secret: getEnv("JWT_SECRET", "change-me-to-a-random-secret"),
-			Expiry: 30 * 24 * time.Hour,
+			Secret: getEnv("JWT_SECRET", "X2Kc7LNkR8t2GkqZixpUObbOk7WZ5CMivIYO/rmMP8I="),
 		},
 		Ollama: OllamaConfig{
 			URL: getEnv("OLLAMA_URL", "http://localhost:11434"),
@@ -80,7 +78,7 @@ func Load() (*Config, error) {
 			CredentialsFile: getEnv("GMAIL_CREDENTIALS_FILE", "credentials.json"),
 			TokenFile:       getEnv("GMAIL_TOKEN_FILE", "token.json"),
 			PollInterval:    pollInterval,
-			Query:           getEnv("GMAIL_QUERY", "from:(alerts@pnc.com OR no.reply.alerts@chase.com OR alert@chase.com)"),
+			Query:           getEnv("GMAIL_QUERY", "from:(pncalerts@visa.com OR no.reply.alerts@chase.com OR pncalerts@pnc.com)"),
 		},
 		Admin: AdminConfig{
 			Username: getEnv("ADMIN_USERNAME", "admin"),
