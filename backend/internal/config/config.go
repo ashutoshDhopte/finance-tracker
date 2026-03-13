@@ -3,16 +3,18 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
 type Config struct {
-	Server   ServerConfig
-	DB       DBConfig
-	JWT      JWTConfig
-	Ollama   OllamaConfig
-	Gmail    GmailConfig
-	Admin    AdminConfig
+	Server         ServerConfig
+	DB             DBConfig
+	JWT            JWTConfig
+	Ollama         OllamaConfig
+	Gmail          GmailConfig
+	Admin          AdminConfig
+	AllowedOrigins []string
 }
 
 type ServerConfig struct {
@@ -61,6 +63,15 @@ func Load() (*Config, error) {
 		)
 	}
 
+	var allowedOrigins []string
+	if raw := os.Getenv("ALLOWED_ORIGINS"); raw != "" {
+		for _, o := range strings.Split(raw, ",") {
+			if trimmed := strings.TrimSpace(o); trimmed != "" {
+				allowedOrigins = append(allowedOrigins, trimmed)
+			}
+		}
+	}
+
 	return &Config{
 		Server: ServerConfig{
 			Port: getEnv("SERVER_PORT", "8080"),
@@ -84,6 +95,7 @@ func Load() (*Config, error) {
 			Username: getEnv("ADMIN_USERNAME", "admin"),
 			Password: getEnv("ADMIN_PASSWORD", "changeme123"),
 		},
+		AllowedOrigins: allowedOrigins,
 	}, nil
 }
 

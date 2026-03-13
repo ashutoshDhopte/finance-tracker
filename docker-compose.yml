@@ -32,25 +32,23 @@ services:
       DB_PASSWORD: finance_secret
       DB_NAME: finance_tracker
       DB_SSLMODE: disable
-      JWT_SECRET: X2Kc7LNkR8t2GkqZixpUObbOk7WZ5CMivIYO/rmMP8I=
+      JWT_SECRET: ${JWT_SECRET}
       OLLAMA_URL: http://host.docker.internal:11434
       SERVER_PORT: 8080
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: changeme123
       GMAIL_POLL_INTERVAL: 15m
       GMAIL_QUERY: "from:(pncalerts@visa.com OR no.reply.alerts@chase.com OR pncalerts@pnc.com)"
+      ALLOWED_ORIGINS: "http://localhost:3000,https://${NGROK_DOMAIN},https://finance-tracker-drab-zeta.vercel.app/"
     volumes:
       - ./backend/credentials.json:/app/credentials.json:ro
       - ./backend/token.json:/app/token.json
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: http://localhost:8080/api/v1
-    ports:
-      - "3000:3000"
+  ngrok:
+    image: ngrok/ngrok:latest
+    command: http api:8080 --url ${NGROK_DOMAIN}
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
     depends_on:
       - api
     restart: unless-stopped

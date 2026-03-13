@@ -13,7 +13,7 @@ import (
 
 func NewRouter(cfg *config.Config, pool *pgxpool.Pool, parserSvc *parser.Service, gmailService *gmailsvc.Service) *gin.Engine {
 	r := gin.Default()
-	r.Use(middleware.CORS())
+	r.Use(middleware.CORS(cfg.AllowedOrigins))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
