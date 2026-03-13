@@ -1,0 +1,223 @@
+import type {
+  Transaction,
+  CreateTransactionRequest,
+  UpdateTransactionRequest,
+  Category,
+  Account,
+  ReportSummary,
+  TrendPoint,
+  Alert,
+  TriggeredAlert,
+} from "./types";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+
+class ApiClient {
+  private token: string | null = null;
+
+  setToken(token: string | null) {
+    this.token = token;
+    if (token) {
+      localStorage.setItem("auth_token", token);
+    } else {
+      localStorage.removeItem("auth_token");
+    }
+  }
+
+  getToken(): string | null {
+    if (this.token) return this.token;
+    if (typeof window !== "undefined") {
+      this.token = localStorage.getItem("auth_token");
+    }
+    return this.token;
+  }
+
+  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const token = this.getToken();
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...((options.headers as Record<string, string>) || {}),
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+    if (res.status === 401) {
+      this.setToken(null);
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+      throw new Error("Unauthorized");
+    }
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Request failed: ${res.status}`);
+    }
+
+    return res.json();
+  }
+
+  // Auth
+  async login(username: string, password: string): Promise<{ token: string; expires_at: string }> {
+    const data = await this.request<{ token: string; expires_at: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+    this.setToken(data.token);
+    return data;
+  }
+
+  logout() {
+    this.setToken(null);
+  }
+
+  // Transactions
+  async getTransactions(params?: {
+    start_date?: string;
+    end_date?: string;
+    category_id?: string;
+    account_id?: string;
+    txn_type?: string;
+    source?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ transactions: Transaction[]; count: number }> {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== "") query.set(k, String(v));
+      });
+    }
+    const qs = query.toString();
+    return this.request(`/transactions${qs ? `?${qs}` : ""}`);
+  }
+
+  async getTransaction(id: string): Promise<Transaction> {
+    return this.request(`/transactions/${id}`);
+  }
+
+  async createTransaction(data: CreateTransactionRequest): Promise<{ id: string }> {
+    return this.request("/transactions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateTransaction(id: string, data: UpdateTransactionRequest): Promise<void> {
+    await this.request(`/transactions/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteTransaction(id: string): Promise<void> {
+    await this.request(`/transactions/${id}`, { method: "DELETE" });
+  }
+
+  // Categories
+  async getCategories(): Promise<{ categories: Category[] }> {
+    return this.request("/categories");
+  }
+
+  async createCategory(data: { name: string; icon?: string; color?: string }): Promise<{ id: string }> {
+    return this.request("/categories", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Accounts
+  async getAccounts(): Promise<{ accounts: Account[] }> {
+    return this.request("/accounts");
+  }
+
+  async createAccount(data: {
+    name: string;
+    institution: string;
+    account_type: string;
+  }): Promise<{ id: string }> {
+    return this.request("/accounts", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Reports
+  async getMonthlyReport(month: string): Promise<ReportSummary> {
+    return this.request(`/reports/monthly?month=${month}`);
+  }
+
+  async getBiweeklyReport(start: string, end: string): Promise<ReportSummary> {
+    return this.request(`/reports/biweekly?start=${start}&end=${end}`);
+  }
+
+  async getCategoryReport(from: string, to: string): Promise<{ categories: import("./types").CategorySummary[]; from: string; to: string }> {
+    return this.request(`/reports/categories?from=${from}&to=${to}`);
+  }
+
+  async getTrends(months?: number): Promise<{ trends: TrendPoint[]; months: number }> {
+    return this.request(`/reports/trends${months ? `?months=${months}` : ""}`);
+  }
+
+  // Alerts
+  async getAlerts(): Promise<{ alerts: Alert[] }> {
+    return this.request("/alerts");
+  }
+
+  async createAlert(data: {
+    name: string;
+    category_id?: string;
+    threshold: number;
+    period: string;
+  }): Promise<{ id: string }> {
+    return this.request("/alerts", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateAlert(id: string, data: Partial<Alert>): Promise<void> {
+    await this.request(`/alerts/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAlert(id: string): Promise<void> {
+    await this.request(`/alerts/${id}`, { method: "DELETE" });
+  }
+
+  async checkAlerts(): Promise<{ triggered: TriggeredAlert[]; count: number }> {
+    return this.request("/alerts/check");
+  }
+
+  // Sync
+  async syncGmail(days: number = 30): Promise<{ message: string; days: number; imported: number; skipped: number; failed: number }> {
+    return this.request(`/sync/gmail?days=${days}`, { method: "POST" });
+  }
+
+  // CSV Import
+  async importCSV(file: File): Promise<{ imported: number; skipped: number; failed: number }> {
+    const text = await file.text();
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE}/transactions/import/csv`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/csv",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: text,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || "Import failed");
+    }
+    return res.json();
+  }
+}
+
+export const api = new ApiClient();

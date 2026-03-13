@@ -1,0 +1,25 @@
+# Environment
+.env
+
+# Gmail credentials (sensitive)
+backend/credentials.json
+backend/token.json
+
+# Go
+backend/server
+backend/tmp/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Node (frontend)
+frontend/node_modules/
+frontend/.expo/
