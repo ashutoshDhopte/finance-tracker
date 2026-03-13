@@ -79,10 +79,21 @@ func (h *IngestHandler) ImportCSV(c *gin.Context) {
 		}
 
 		var categoryID *string
-		if h.parserSvc != nil {
+		if txn.category != "" {
+			err = h.pool.QueryRow(context.Background(),
+				"SELECT id FROM categories WHERE LOWER(name) = LOWER($1)",
+				txn.category,
+			).Scan(&categoryID)
+			if err != nil {
+				categoryID = nil
+			}
+		}
+		if categoryID == nil && h.parserSvc != nil {
 			desc := fmt.Sprintf("%s $%.2f on %s", txn.merchant, txn.amount, txn.date)
-			parsed, err := h.parserSvc.Parse(context.Background(), desc)
-			if err == nil {
+			parsed, parseErr := h.parserSvc.Parse(context.Background(), desc)
+			if parseErr != nil {
+				log.Printf("CSV row %d LLM categorization failed: %v", i+1, parseErr)
+			} else {
 				err = h.pool.QueryRow(context.Background(),
 					"SELECT id FROM categories WHERE LOWER(name) = LOWER($1)",
 					parsed.Category,
@@ -123,6 +134,7 @@ type csvTransaction struct {
 	merchant string
 	date     string
 	txnType  string
+	category string
 }
 
 func detectBank(headers []string) string {
@@ -158,7 +170,11 @@ func parseChaseRow(row []string) (*csvTransaction, error) {
 		return nil, err
 	}
 
-	amount, err := strconv.ParseFloat(strings.TrimSpace(row[5]), 64)
+	amountStr := strings.TrimSpace(row[5])
+	amountStr = strings.ReplaceAll(amountStr, "$", "")
+	amountStr = strings.ReplaceAll(amountStr, ",", "")
+	amountStr = strings.ReplaceAll(amountStr, " ", "")
+	amount, err := strconv.ParseFloat(amountStr, 64)
 	if err != nil {
 		return nil, err
 	}
@@ -171,11 +187,17 @@ func parseChaseRow(row []string) (*csvTransaction, error) {
 		amount = -amount
 	}
 
+	cat := ""
+	if len(row) >= 4 {
+		cat = strings.TrimSpace(row[3])
+	}
+
 	return &csvTransaction{
 		amount:   amount,
 		merchant: strings.TrimSpace(row[2]),
 		date:     date,
 		txnType:  txnType,
+		category: cat,
 	}, nil
 }
 
@@ -242,11 +264,17 @@ func parseGenericRow(row []string) (*csvTransaction, error) {
 		amount = -amount
 	}
 
+	cat := ""
+	if len(row) >= 4 {
+		cat = strings.TrimSpace(row[3])
+	}
+
 	return &csvTransaction{
 		amount:   amount,
 		merchant: strings.TrimSpace(row[1]),
 		date:     date,
 		txnType:  txnType,
+		category: cat,
 	}, nil
 }
 

@@ -155,12 +155,14 @@ func (h *AlertHandler) Check(c *gin.Context) {
 
 		start := periodStart(a.Period)
 		var spent float64
-		q := `SELECT COALESCE(SUM(amount), 0) FROM transactions
-		      WHERE user_id = $1 AND txn_type = 'debit' AND transaction_date >= $2`
+		q := `SELECT COALESCE(SUM(t.amount), 0) FROM transactions t
+		      LEFT JOIN categories c ON t.category_id = c.id
+		      WHERE t.user_id = $1 AND t.txn_type = 'debit' AND t.transaction_date >= $2
+		      AND (c.name IS NULL OR c.name != 'Transfer')`
 		args := []interface{}{userID, start.Format("2006-01-02")}
 
 		if a.CategoryID != nil {
-			q += " AND category_id = $3"
+			q += " AND t.category_id = $3"
 			args = append(args, *a.CategoryID)
 		}
 
@@ -187,14 +189,12 @@ func periodStart(period string) time.Time {
 		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	case "weekly":
 		weekday := int(now.Weekday())
-		return now.AddDate(0, 0, -weekday)
+		return time.Date(now.Year(), now.Month(), now.Day()-weekday, 0, 0, 0, 0, now.Location())
 	case "biweekly":
-		weekday := int(now.Weekday())
-		start := now.AddDate(0, 0, -weekday)
-		if now.Day() > 14 {
+		if now.Day() >= 15 {
 			return time.Date(now.Year(), now.Month(), 15, 0, 0, 0, 0, now.Location())
 		}
-		return time.Date(start.Year(), start.Month(), 1, 0, 0, 0, 0, start.Location())
+		return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 	case "monthly":
 		return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 	default:

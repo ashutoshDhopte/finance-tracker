@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { api } from "@/lib/api";
-import { formatCurrency, getCurrentMonth, formatMonth } from "@/lib/utils";
+import { formatCurrency, getCurrentMonth, formatMonth, getMonthRange, buildTransactionUrl } from "@/lib/utils";
 import type { ReportSummary, TrendPoint, CategorySummary } from "@/lib/types";
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet } from "lucide-react";
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, ArrowLeftRight } from "lucide-react";
+import CategoryIcon from "@/components/CategoryIcon";
 import {
   ResponsiveContainer,
   PieChart,
@@ -92,7 +95,10 @@ function MonthlyReport() {
         </button>
       </div>
 
-      {summary && <ReportContent summary={summary} />}
+      {summary && (() => {
+        const range = getMonthRange(month);
+        return <ReportContent summary={summary} startDate={range.start} endDate={range.end} />;
+      })()}
     </div>
   );
 }
@@ -142,7 +148,7 @@ function BiweeklyReport() {
         </div>
       </div>
 
-      {summary && <ReportContent summary={summary} />}
+      {summary && <ReportContent summary={summary} startDate={start} endDate={end} />}
     </div>
   );
 }
@@ -239,18 +245,22 @@ function TrendsReport() {
   );
 }
 
-function ReportContent({ summary }: { summary: ReportSummary }) {
+function ReportContent({ summary, startDate, endDate }: { summary: ReportSummary; startDate?: string; endDate?: string }) {
+  const router = useRouter();
+  const dateFilters = { start: startDate, end: endDate };
+
   const pieData = summary.by_category
     .filter((c) => c.total > 0)
-    .map((c) => ({ name: c.category_name, value: c.total, color: c.color, icon: c.icon, count: c.count }));
+    .map((c) => ({ name: c.category_name, value: c.total, color: c.color, icon: c.icon, count: c.count, category_id: c.category_id }));
 
   return (
     <div className="space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <MiniCard label="Income" amount={summary.total_income} icon={<TrendingUp className="w-4 h-4" />} color="emerald" />
-        <MiniCard label="Expenses" amount={summary.total_expenses} icon={<TrendingDown className="w-4 h-4" />} color="red" />
-        <MiniCard label="Net" amount={summary.net} icon={<Wallet className="w-4 h-4" />} color={summary.net >= 0 ? "emerald" : "red"} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MiniCard label="Income" amount={summary.total_income} icon={<TrendingUp className="w-4 h-4" />} color="emerald" href={buildTransactionUrl({ type: "credit", ...dateFilters })} />
+        <MiniCard label="Expenses" amount={summary.total_expenses} icon={<TrendingDown className="w-4 h-4" />} color="red" href={buildTransactionUrl({ type: "debit", ...dateFilters })} />
+        <MiniCard label="Transfers" amount={summary.total_transfers} icon={<ArrowLeftRight className="w-4 h-4" />} color="blue" href={buildTransactionUrl({ category_name: "Transfer", ...dateFilters })} />
+        <MiniCard label="Net" amount={summary.net} icon={<Wallet className="w-4 h-4" />} color={summary.net >= 0 ? "emerald" : "red"} href={buildTransactionUrl(dateFilters)} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -261,7 +271,20 @@ function ReportContent({ summary }: { summary: ReportSummary }) {
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={3} dataKey="value">
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={3}
+                    dataKey="value"
+                    className="cursor-pointer"
+                    onClick={(_, index) => {
+                      const entry = pieData[index];
+                      if (entry) router.push(buildTransactionUrl({ category: entry.category_id, ...dateFilters }));
+                    }}
+                  >
                     {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
                   <Tooltip
@@ -281,7 +304,11 @@ function ReportContent({ summary }: { summary: ReportSummary }) {
           <h3 className="text-sm font-semibold text-zinc-300 mb-4">By Category</h3>
           <div className="space-y-3">
             {pieData.length > 0 ? (
-              pieData.map((c) => <CategoryBar key={c.name} category={c} maxValue={pieData[0].value} />)
+              pieData.map((c) => (
+                <Link key={c.name} href={buildTransactionUrl({ category: c.category_id, ...dateFilters })}>
+                  <CategoryBar category={c} maxValue={pieData[0].value} />
+                </Link>
+              ))
             ) : (
               <p className="text-zinc-500 text-sm py-12 text-center">No data</p>
             )}
@@ -295,10 +322,10 @@ function ReportContent({ summary }: { summary: ReportSummary }) {
 function CategoryBar({ category, maxValue }: { category: { name: string; value: number; color: string; icon: string; count: number }; maxValue: number }) {
   const pct = maxValue > 0 ? (category.value / maxValue) * 100 : 0;
   return (
-    <div>
+    <div className="hover:bg-zinc-800/50 rounded-lg p-2 -m-2 transition-colors cursor-pointer">
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
-          <span className="text-base">{category.icon}</span>
+          <span className="text-base text-zinc-400"><CategoryIcon icon={category.icon} size="w-4 h-4" /></span>
           <span className="text-sm text-zinc-300">{category.name}</span>
           <span className="text-xs text-zinc-600">{category.count} txn{category.count !== 1 ? "s" : ""}</span>
         </div>
@@ -311,10 +338,10 @@ function CategoryBar({ category, maxValue }: { category: { name: string; value: 
   );
 }
 
-function MiniCard({ label, amount, icon, color }: { label: string; amount: number; icon: React.ReactNode; color: string }) {
-  const cls = color === "emerald" ? "text-emerald-400" : "text-red-400";
-  return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+function MiniCard({ label, amount, icon, color, href }: { label: string; amount: number; icon: React.ReactNode; color: string; href?: string }) {
+  const cls = color === "emerald" ? "text-emerald-400" : color === "blue" ? "text-blue-400" : "text-red-400";
+  const card = (
+    <div className={`bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between ${href ? "hover:border-zinc-600 transition-colors cursor-pointer" : ""}`}>
       <div>
         <p className="text-xs text-zinc-500">{label}</p>
         <p className={`text-xl font-bold ${cls} mt-1`}>{formatCurrency(amount)}</p>
@@ -322,6 +349,7 @@ function MiniCard({ label, amount, icon, color }: { label: string; amount: numbe
       <div className={cls}>{icon}</div>
     </div>
   );
+  return href ? <Link href={href}>{card}</Link> : card;
 }
 
 function ReportSkeleton() {

@@ -70,6 +70,18 @@ export interface ReportSummary {
   total_transfers: number;
   net: number;
   by_category: CategorySummary[];
+  by_account: AccountSummary[];
+}
+
+export interface AccountSummary {
+  account_id: string;
+  account_name: string;
+  institution: string;
+  account_type: string;
+  last_four?: string;
+  income: number;
+  expenses: number;
+  net: number;
 }
 
 export interface CategorySummary {

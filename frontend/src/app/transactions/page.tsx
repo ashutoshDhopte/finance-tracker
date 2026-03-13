@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Transaction, Category, Account, CreateTransactionRequest, UpdateTransactionRequest } from "@/lib/types";
@@ -22,6 +23,16 @@ import {
 const PAGE_SIZE = 20;
 
 export default function TransactionsPage() {
+  return (
+    <Suspense>
+      <TransactionsContent />
+    </Suspense>
+  );
+}
+
+function TransactionsContent() {
+  const searchParams = useSearchParams();
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -29,14 +40,29 @@ export default function TransactionsPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
 
-  // Filters
-  const [search, setSearch] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
-  const [filterAccount, setFilterAccount] = useState("");
-  const [filterType, setFilterType] = useState("");
-  const [filterStart, setFilterStart] = useState("");
-  const [filterEnd, setFilterEnd] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
+  // Filters — initialized from URL query params
+  const [search, setSearch] = useState(searchParams.get("search") || "");
+  const [filterCategory, setFilterCategory] = useState(searchParams.get("category") || "");
+  const [filterAccount, setFilterAccount] = useState(searchParams.get("account") || "");
+  const [filterType, setFilterType] = useState(searchParams.get("type") || "");
+  const [filterStart, setFilterStart] = useState(searchParams.get("start") || "");
+  const [filterEnd, setFilterEnd] = useState(searchParams.get("end") || "");
+
+  const hasUrlFilters = searchParams.get("type") || searchParams.get("category") || searchParams.get("category_name") || searchParams.get("account") || searchParams.get("start") || searchParams.get("end") || searchParams.get("search");
+  const [showFilters, setShowFilters] = useState(!!hasUrlFilters);
+
+  // Resolve category_name URL param → category ID after categories load
+  const urlCategoryName = searchParams.get("category_name");
+  const categoryNameResolved = useRef(false);
+  useEffect(() => {
+    if (urlCategoryName && !categoryNameResolved.current && categories.length > 0) {
+      const match = categories.find(c => c.name.toLowerCase() === urlCategoryName.toLowerCase());
+      if (match) {
+        setFilterCategory(match.id);
+        categoryNameResolved.current = true;
+      }
+    }
+  }, [categories, urlCategoryName]);
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
@@ -216,7 +242,7 @@ export default function TransactionsPage() {
       {/* Transaction list */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
         {/* Table header */}
-        <div className="hidden sm:grid grid-cols-[40%_18%_15%_15%_12%] px-5 py-3 border-b border-zinc-800 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+        <div className="hidden sm:grid grid-cols-[1fr_120px_100px_110px_64px] px-5 py-3 border-b border-zinc-800 text-xs font-medium text-zinc-500 uppercase tracking-wider">
           <span>Transaction</span>
           <span>Category</span>
           <span className="text-right">Amount</span>
@@ -235,7 +261,7 @@ export default function TransactionsPage() {
             {transactions.map((txn) => (
               <div
                 key={txn.id}
-                className="px-5 py-3 flex flex-col sm:grid sm:grid-cols-[40%_18%_15%_15%_12%] gap-2 items-start sm:items-center hover:bg-zinc-800/40 transition-colors"
+                className="px-5 py-3 flex flex-col sm:grid sm:grid-cols-[1fr_120px_100px_110px_64px] items-start sm:items-center hover:bg-zinc-800/40 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${txn.txn_type === "credit" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>
@@ -246,7 +272,7 @@ export default function TransactionsPage() {
                     {txn.notes && <p className="text-xs text-zinc-500 break-words">{txn.notes}</p>}
                   </div>
                 </div>
-                <span className="text-xs text-zinc-400 bg-zinc-800 px-2 py-1 rounded-md break-words">
+                <span className="text-xs text-zinc-400 bg-zinc-800 px-2 py-1 rounded-md truncate max-w-full">
                   {txn.category_name || "—"}
                 </span>
                 <span className={`text-right text-sm font-mono font-medium ${txn.txn_type === "credit" ? "text-emerald-400" : "text-red-400"}`}>

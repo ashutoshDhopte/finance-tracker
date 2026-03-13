@@ -130,6 +130,17 @@ class ApiClient {
     });
   }
 
+  async updateCategory(id: string, data: { name?: string; icon?: string; color?: string }): Promise<void> {
+    await this.request(`/categories/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCategory(id: string): Promise<void> {
+    await this.request(`/categories/${id}`, { method: "DELETE" });
+  }
+
   // Accounts
   async getAccounts(): Promise<{ accounts: Account[] }> {
     return this.request("/accounts");
@@ -157,6 +168,10 @@ class ApiClient {
       method: "PUT",
       body: JSON.stringify(data),
     });
+  }
+
+  async deleteAccount(id: string): Promise<void> {
+    await this.request(`/accounts/${id}`, { method: "DELETE" });
   }
 
   // Reports

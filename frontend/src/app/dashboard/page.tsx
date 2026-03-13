@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { api } from "@/lib/api";
-import { formatCurrency, formatDate, formatMonth } from "@/lib/utils";
-import type { Transaction, ReportSummary, TrendPoint, TriggeredAlert } from "@/lib/types";
+import { formatCurrency, formatDate, formatMonth, buildTransactionUrl } from "@/lib/utils";
+import type { Transaction, ReportSummary, TrendPoint, TriggeredAlert, AccountSummary } from "@/lib/types";
 import {
   TrendingUp,
   TrendingDown,
@@ -12,6 +14,10 @@ import {
   AlertTriangle,
   ArrowUpRight,
   ArrowDownRight,
+  Landmark,
+  PiggyBank,
+  CreditCard,
+  Building2,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -59,9 +65,11 @@ export default function DashboardPage() {
     return <DashboardSkeleton />;
   }
 
+  const router = useRouter();
+
   const pieData = summary?.by_category
     .filter((c) => c.total > 0)
-    .map((c) => ({ name: c.category_name, value: c.total, color: c.color })) || [];
+    .map((c) => ({ name: c.category_name, value: c.total, color: c.color, category_id: c.category_id })) || [];
 
   const trendData = trends.map((t) => ({
     month: formatMonth(t.month),
@@ -103,24 +111,28 @@ export default function DashboardPage() {
           amount={summary?.total_income ?? 0}
           icon={<TrendingUp className="w-5 h-5" />}
           color="emerald"
+          href={buildTransactionUrl({ type: "credit" })}
         />
         <SummaryCard
           label="Expenses"
           amount={summary?.total_expenses ?? 0}
           icon={<TrendingDown className="w-5 h-5" />}
           color="red"
+          href={buildTransactionUrl({ type: "debit" })}
         />
         <SummaryCard
           label="Transfers"
           amount={summary?.total_transfers ?? 0}
           icon={<ArrowLeftRight className="w-5 h-5" />}
           color="blue"
+          href={buildTransactionUrl({ category_name: "Transfer" })}
         />
         <SummaryCard
           label="Net"
           amount={summary?.net ?? 0}
           icon={<Wallet className="w-5 h-5" />}
           color={(summary?.net ?? 0) >= 0 ? "emerald" : "red"}
+          href="/transactions"
         />
       </div>
 
@@ -142,6 +154,11 @@ export default function DashboardPage() {
                       outerRadius={80}
                       paddingAngle={3}
                       dataKey="value"
+                      className="cursor-pointer"
+                      onClick={(_, index) => {
+                        const entry = pieData[index];
+                        if (entry) router.push(buildTransactionUrl({ category: entry.category_id }));
+                      }}
                     >
                       {pieData.map((entry, i) => (
                         <Cell key={i} fill={entry.color} />
@@ -161,13 +178,17 @@ export default function DashboardPage() {
               </div>
               <div className="flex-1 space-y-2">
                 {pieData.slice(0, 6).map((c) => (
-                  <div key={c.name} className="flex items-center justify-between text-sm">
+                  <Link
+                    key={c.name}
+                    href={buildTransactionUrl({ category: c.category_id })}
+                    className="flex items-center justify-between text-sm hover:bg-zinc-800/50 rounded-md px-2 py-1 -mx-2 transition-colors"
+                  >
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
                       <span className="text-zinc-300">{c.name}</span>
                     </div>
                     <span className="text-zinc-400 font-mono">{formatCurrency(c.value)}</span>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -216,6 +237,20 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Account balances */}
+      {(summary?.by_account?.length ?? 0) > 0 && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-zinc-300 mb-4">Account Balances</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {summary!.by_account.map((acc) => (
+              <Link key={acc.account_id} href={buildTransactionUrl({ account: acc.account_id })}>
+                <AccountCard account={acc} />
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Recent transactions */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl">
         <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
@@ -253,7 +288,7 @@ export default function DashboardPage() {
   );
 }
 
-function SummaryCard({ label, amount, icon, color }: { label: string; amount: number; icon: React.ReactNode; color: string }) {
+function SummaryCard({ label, amount, icon, color, href }: { label: string; amount: number; icon: React.ReactNode; color: string; href?: string }) {
   const colorMap: Record<string, { bg: string; text: string; iconBg: string }> = {
     emerald: { bg: "bg-emerald-500/10", text: "text-emerald-400", iconBg: "bg-emerald-500/15" },
     red: { bg: "bg-red-500/10", text: "text-red-400", iconBg: "bg-red-500/15" },
@@ -261,8 +296,8 @@ function SummaryCard({ label, amount, icon, color }: { label: string; amount: nu
   };
   const c = colorMap[color] || colorMap.emerald;
 
-  return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+  const card = (
+    <div className={`bg-zinc-900 border border-zinc-800 rounded-xl p-5 ${href ? "hover:border-zinc-600 transition-colors cursor-pointer" : ""}`}>
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm text-zinc-400">{label}</span>
         <div className={`w-9 h-9 rounded-lg ${c.iconBg} ${c.text} flex items-center justify-center`}>
@@ -270,6 +305,46 @@ function SummaryCard({ label, amount, icon, color }: { label: string; amount: nu
         </div>
       </div>
       <p className={`text-2xl font-bold ${c.text}`}>{formatCurrency(amount)}</p>
+    </div>
+  );
+
+  return href ? <Link href={href}>{card}</Link> : card;
+}
+
+const ACCOUNT_TYPE_ICONS: Record<string, React.ReactNode> = {
+  checking: <Landmark className="w-5 h-5" />,
+  savings: <PiggyBank className="w-5 h-5" />,
+  credit_card: <CreditCard className="w-5 h-5" />,
+  investment: <Building2 className="w-5 h-5" />,
+};
+
+function AccountCard({ account }: { account: AccountSummary }) {
+  const netColor = account.net >= 0 ? "text-emerald-400" : "text-red-400";
+
+  return (
+    <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-4 hover:border-zinc-600 transition-colors cursor-pointer">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-9 h-9 rounded-lg bg-zinc-700/50 flex items-center justify-center text-zinc-400">
+          {ACCOUNT_TYPE_ICONS[account.account_type] || <Building2 className="w-5 h-5" />}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-white truncate">
+            {account.account_name}
+            {account.last_four && <span className="text-zinc-500 font-mono ml-1.5">••{account.last_four}</span>}
+          </p>
+          <p className="text-xs text-zinc-500">{account.institution}</p>
+        </div>
+      </div>
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs text-zinc-500">Net</span>
+        <span className={`text-lg font-bold font-mono ${netColor}`}>
+          {account.net >= 0 ? "+" : ""}{formatCurrency(account.net)}
+        </span>
+      </div>
+      <div className="flex justify-between mt-1.5 text-xs text-zinc-500">
+        <span>In: <span className="text-emerald-400/80 font-mono">{formatCurrency(account.income)}</span></span>
+        <span>Out: <span className="text-red-400/80 font-mono">{formatCurrency(account.expenses)}</span></span>
+      </div>
     </div>
   );
 }

@@ -43,10 +43,13 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, parserSvc *parser.Service
 
 			auth.GET("/categories", catHandler.List)
 			auth.POST("/categories", catHandler.Create)
+			auth.PUT("/categories/:id", catHandler.Update)
+			auth.DELETE("/categories/:id", catHandler.Delete)
 
 			auth.GET("/accounts", accHandler.List)
 			auth.POST("/accounts", accHandler.Create)
 			auth.PUT("/accounts/:id", accHandler.Update)
+			auth.DELETE("/accounts/:id", accHandler.Delete)
 
 			auth.GET("/reports/monthly", reportHandler.Monthly)
 			auth.GET("/reports/biweekly", reportHandler.Biweekly)

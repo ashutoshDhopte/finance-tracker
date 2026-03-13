@@ -6,6 +6,15 @@ export function formatCurrency(amount: number): string {
 }
 
 export function formatDate(dateStr: string): string {
+  const parts = dateStr.split("T")[0].split("-");
+  if (parts.length === 3) {
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
   const d = new Date(dateStr);
   return d.toLocaleDateString("en-US", {
     month: "short",
@@ -42,6 +51,15 @@ export function getMonthRange(monthStr: string): { start: string; end: string } 
 
 export function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(" ");
+}
+
+export function buildTransactionUrl(filters: Record<string, string | undefined>): string {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+  const qs = params.toString();
+  return qs ? `/transactions?${qs}` : "/transactions";
 }
 
 const CATEGORY_COLORS: Record<string, string> = {

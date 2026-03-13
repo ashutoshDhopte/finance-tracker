@@ -1,17 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
-import { formatCurrency, getCurrentMonth, getMonthRange } from "@/lib/utils";
+import { formatCurrency, getCurrentMonth, getMonthRange, buildTransactionUrl } from "@/lib/utils";
 import type { Category, CategorySummary } from "@/lib/types";
 import Modal from "@/components/Modal";
-import { Plus, Tag } from "lucide-react";
+import CategoryIcon from "@/components/CategoryIcon";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [spending, setSpending] = useState<Record<string, CategorySummary>>({});
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingCat, setEditingCat] = useState<Category | null>(null);
 
   async function load() {
     try {
@@ -65,14 +68,19 @@ export default function CategoriesPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {categories.map((cat) => {
           const spend = spending[cat.id];
+          const { start: mStart, end: mEnd } = getMonthRange(getCurrentMonth());
           return (
-            <div key={cat.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors">
+            <Link
+              key={cat.id}
+              href={buildTransactionUrl({ category: cat.id, start: mStart, end: mEnd })}
+              className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-600 transition-colors block"
+            >
               <div className="flex items-center gap-3 mb-3">
                 <div
-                  className="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
+                  className="w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0"
                   style={{ backgroundColor: cat.color + "22" }}
                 >
-                  {cat.icon || <Tag className="w-5 h-5" style={{ color: cat.color }} />}
+                  <CategoryIcon icon={cat.icon} color={cat.color} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-white truncate">{cat.name}</p>
@@ -81,6 +89,26 @@ export default function CategoriesPage() {
                   ) : (
                     <p className="text-xs text-zinc-600">No spending this month</p>
                   )}
+                </div>
+                <div className="flex gap-1 shrink-0" onClick={(e) => e.preventDefault()}>
+                  <button
+                    onClick={() => setEditingCat(cat)}
+                    className="p-1.5 text-zinc-500 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Delete category "${cat.name}"?`)) return;
+                      try {
+                        await api.deleteCategory(cat.id);
+                        load();
+                      } catch { /* ignore */ }
+                    }}
+                    className="p-1.5 text-zinc-500 hover:text-red-400 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
               {spend ? (
@@ -95,7 +123,7 @@ export default function CategoriesPage() {
               ) : (
                 <p className="text-sm text-zinc-600 font-mono">{formatCurrency(0)}</p>
               )}
-            </div>
+            </Link>
           );
         })}
       </div>
@@ -105,6 +133,15 @@ export default function CategoriesPage() {
         onClose={() => setShowCreate(false)}
         onCreated={load}
       />
+
+      {editingCat && (
+        <EditCategoryModal
+          open
+          category={editingCat}
+          onClose={() => setEditingCat(null)}
+          onSaved={load}
+        />
+      )}
     </div>
   );
 }
@@ -185,6 +222,85 @@ function CreateCategoryModal({ open, onClose, onCreated }: { open: boolean; onCl
           </button>
           <button type="submit" disabled={saving} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-500 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed">
             {saving ? "Creating..." : "Create"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function EditCategoryModal({ open, category, onClose, onSaved }: { open: boolean; category: Category; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(category.name);
+  const [icon, setIcon] = useState(category.icon || "");
+  const [color, setColor] = useState(category.color);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const presetColors = ["#10b981", "#ef4444", "#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#6366f1"];
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await api.updateCategory(category.id, { name, icon: icon || undefined, color });
+      onClose();
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Edit Category">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <p className="text-red-400 text-sm bg-red-500/10 rounded-lg px-3 py-2">{error}</p>}
+
+        <div>
+          <label className="block text-xs text-zinc-400 mb-1">Name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-zinc-400 mb-1">Icon (emoji)</label>
+          <input
+            type="text"
+            value={icon}
+            onChange={(e) => setIcon(e.target.value)}
+            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            placeholder="e.g. 🐕"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-zinc-400 mb-1">Color</label>
+          <div className="flex gap-2 flex-wrap">
+            {presetColors.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setColor(c)}
+                className={`w-8 h-8 rounded-lg cursor-pointer transition-transform ${color === c ? "scale-110 ring-2 ring-white ring-offset-2 ring-offset-zinc-900" : "hover:scale-105"}`}
+                style={{ backgroundColor: c }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg text-sm hover:bg-zinc-700 cursor-pointer">
+            Cancel
+          </button>
+          <button type="submit" disabled={saving} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-500 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed">
+            {saving ? "Saving..." : "Save Changes"}
           </button>
         </div>
       </form>

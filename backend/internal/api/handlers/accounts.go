@@ -102,3 +102,21 @@ func (h *AccountHandler) Update(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "updated"})
 }
+
+func (h *AccountHandler) Delete(c *gin.Context) {
+	userID := c.GetString("user_id")
+	id := c.Param("id")
+
+	tag, err := h.pool.Exec(context.Background(),
+		"DELETE FROM accounts WHERE id = $1 AND user_id = $2", id, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete account: " + err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+}

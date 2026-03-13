@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -65,4 +67,72 @@ func (h *CategoryHandler) Create(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"id": id})
+}
+
+func (h *CategoryHandler) Update(c *gin.Context) {
+	id := c.Param("id")
+
+	var req models.UpdateCategoryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	setParts := []string{}
+	args := []interface{}{}
+	argIdx := 1
+
+	if req.Name != nil {
+		setParts = append(setParts, fmt.Sprintf("name = $%d", argIdx))
+		args = append(args, *req.Name)
+		argIdx++
+	}
+	if req.Icon != nil {
+		setParts = append(setParts, fmt.Sprintf("icon = $%d", argIdx))
+		args = append(args, *req.Icon)
+		argIdx++
+	}
+	if req.Color != nil {
+		setParts = append(setParts, fmt.Sprintf("color = $%d", argIdx))
+		args = append(args, *req.Color)
+		argIdx++
+	}
+
+	if len(setParts) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no fields to update"})
+		return
+	}
+
+	args = append(args, id)
+	query := fmt.Sprintf("UPDATE categories SET %s WHERE id = $%d",
+		strings.Join(setParts, ", "), argIdx)
+
+	tag, err := h.pool.Exec(context.Background(), query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update category"})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "category not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "updated"})
+}
+
+func (h *CategoryHandler) Delete(c *gin.Context) {
+	id := c.Param("id")
+
+	tag, err := h.pool.Exec(context.Background(),
+		"DELETE FROM categories WHERE id = $1", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete category"})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "category not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }

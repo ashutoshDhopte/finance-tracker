@@ -19,3 +19,9 @@ type CreateCategoryRequest struct {
 	Color    string  `json:"color"`
 	ParentID *string `json:"parent_id,omitempty"`
 }
+
+type UpdateCategoryRequest struct {
+	Name  *string `json:"name"`
+	Icon  *string `json:"icon"`
+	Color *string `json:"color"`
+}

@@ -131,6 +131,18 @@ export default function SettingsPage() {
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Delete account "${acc.name}"?`)) return;
+                      try {
+                        await api.deleteAccount(acc.id);
+                        load();
+                      } catch { /* ignore */ }
+                    }}
+                    className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
                 {acc.last_synced_at && (
                   <p className="text-xs text-zinc-600 mt-3">Last synced: {formatDate(acc.last_synced_at)}</p>

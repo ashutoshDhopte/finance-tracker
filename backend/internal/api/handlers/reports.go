@@ -79,6 +79,7 @@ func (h *ReportHandler) Categories(c *gin.Context) {
 		     AND t.transaction_date >= $2
 		     AND t.transaction_date <= $3
 		     AND t.txn_type = 'debit'
+		WHERE c.name != 'Transfer'
 		GROUP BY c.id, c.name, c.color, c.icon
 		HAVING COUNT(t.id) > 0
 		ORDER BY total DESC`,
@@ -109,16 +110,17 @@ func (h *ReportHandler) Trends(c *gin.Context) {
 		months = 6
 	}
 
+	cutoff := time.Now().AddDate(0, -months, 0).Format("2006-01-02")
 	rows, err := h.pool.Query(context.Background(), `
 		SELECT TO_CHAR(t.transaction_date, 'YYYY-MM') as month,
 		       COALESCE(SUM(CASE WHEN t.txn_type = 'credit' AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0) as income,
 		       COALESCE(SUM(CASE WHEN t.txn_type = 'debit'  AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0) as expenses
 		FROM transactions t
 		LEFT JOIN categories c ON t.category_id = c.id
-		WHERE t.user_id = $1
+		WHERE t.user_id = $1 AND t.transaction_date >= $2
 		GROUP BY month
 		ORDER BY month`,
-		userID)
+		userID, cutoff)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query trends"})
 		return
@@ -212,11 +214,55 @@ func (h *ReportHandler) buildSummary(userID, startDate, endDate string) (*models
 		cats = append(cats, cs)
 	}
 
+	var accQuery string
+	var accArgs []interface{}
+	if allTime {
+		accQuery = `
+			SELECT a.id, a.name, a.institution, a.account_type, a.last_four,
+			       COALESCE(SUM(CASE WHEN t.txn_type = 'credit' THEN t.amount ELSE 0 END), 0) as income,
+			       COALESCE(SUM(CASE WHEN t.txn_type = 'debit' THEN t.amount ELSE 0 END), 0) as expenses
+			FROM accounts a
+			LEFT JOIN transactions t ON t.account_id = a.id
+			WHERE a.user_id = $1
+			GROUP BY a.id, a.name, a.institution, a.account_type, a.last_four
+			ORDER BY a.name`
+		accArgs = []interface{}{userID}
+	} else {
+		accQuery = `
+			SELECT a.id, a.name, a.institution, a.account_type, a.last_four,
+			       COALESCE(SUM(CASE WHEN t.txn_type = 'credit' THEN t.amount ELSE 0 END), 0) as income,
+			       COALESCE(SUM(CASE WHEN t.txn_type = 'debit' THEN t.amount ELSE 0 END), 0) as expenses
+			FROM accounts a
+			LEFT JOIN transactions t ON t.account_id = a.id
+			     AND t.transaction_date >= $2 AND t.transaction_date < $3
+			WHERE a.user_id = $1
+			GROUP BY a.id, a.name, a.institution, a.account_type, a.last_four
+			ORDER BY a.name`
+		accArgs = []interface{}{userID, startDate, endDate}
+	}
+
+	accRows, err := h.pool.Query(context.Background(), accQuery, accArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer accRows.Close()
+
+	accs := []models.AccountSummary{}
+	for accRows.Next() {
+		var as models.AccountSummary
+		if err := accRows.Scan(&as.AccountID, &as.AccountName, &as.Institution, &as.AccountType, &as.LastFour, &as.Income, &as.Expenses); err != nil {
+			return nil, err
+		}
+		as.Net = as.Income - as.Expenses
+		accs = append(accs, as)
+	}
+
 	return &models.ReportSummary{
 		TotalIncome:    totalIncome,
 		TotalExpenses:  totalExpenses,
 		TotalTransfers: totalTransfers,
 		Net:            totalIncome - totalExpenses,
 		ByCategory:     cats,
+		ByAccount:      accs,
 	}, nil
 }
