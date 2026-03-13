@@ -39,7 +39,7 @@ services:
       ADMIN_PASSWORD: changeme123
       GMAIL_POLL_INTERVAL: 15m
       GMAIL_QUERY: "from:(pncalerts@visa.com OR no.reply.alerts@chase.com OR pncalerts@pnc.com)"
-      ALLOWED_ORIGINS: "http://localhost:3000,https://${NGROK_DOMAIN},https://finance-tracker-drab-zeta.vercel.app/"
+      ALLOWED_ORIGINS: "http://localhost:3000,https://${NGROK_DOMAIN},https://${VERCEL_URL}"
     volumes:
       - ./backend/credentials.json:/app/credentials.json:ro
       - ./backend/token.json:/app/token.json
