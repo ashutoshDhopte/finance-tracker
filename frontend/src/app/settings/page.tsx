@@ -489,6 +489,7 @@ function SyncSection() {
               disabled={syncing}
               className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             >
+              <option value={1}>Last 24 hours</option>
               <option value={7}>Last 7 days</option>
               <option value={14}>Last 14 days</option>
               <option value={30}>Last 30 days</option>

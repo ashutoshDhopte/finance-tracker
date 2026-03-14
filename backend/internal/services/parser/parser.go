@@ -18,15 +18,16 @@ type Service struct {
 }
 
 type ParsedTransaction struct {
-	Amount          float64 `json:"amount"`
-	Merchant        string  `json:"merchant"`
-	Date            string  `json:"date"`
-	Type            string  `json:"transaction_type"`
-	Category        string  `json:"suggested_category"`
-	Confidence      float64 `json:"confidence"`
-	Description     string  `json:"description,omitempty"`
-	AccountLastFour string  `json:"account_last_four,omitempty"`
-	PaymentMethod   string  `json:"payment_method,omitempty"`
+	Amount              float64 `json:"amount"`
+	Merchant            string  `json:"merchant"`
+	Date                string  `json:"date"`
+	Type                string  `json:"transaction_type"`
+	Category            string  `json:"suggested_category"`
+	Confidence          float64 `json:"confidence"`
+	Description         string  `json:"description,omitempty"`
+	AccountLastFour     string  `json:"account_last_four,omitempty"`
+	FromAccountLastFour string  `json:"from_account_last_four,omitempty"`
+	PaymentMethod       string  `json:"payment_method,omitempty"`
 }
 
 func NewService(ollamaURL string) *Service {
@@ -49,7 +50,8 @@ Respond ONLY with a valid JSON object (no markdown, no explanation) containing t
 - "suggested_category": one of: Groceries, Dining, Gas, Transportation, Shopping, Bills & Utilities, Rent & Mortgage, Healthcare, Entertainment, Subscriptions, Income, Transfer, ATM, Fees, Other
 - "confidence": number between 0 and 1 indicating how confident you are in the parsing
 - "description": brief one-line description of the transaction
-- "account_last_four": string, the last 4 digits of the bank account or card mentioned in the email (e.g. "1234" from "account ending in 1234"). Return empty string if not found.
+- "account_last_four": string, the last 4 digits of the destination/receiving bank account or card (e.g. "1234" from "account ending in 1234"). Return empty string if not found.
+- "from_account_last_four": string, the last 4 digits of the source/originating account for transfers (e.g. if "transferred from account ending in 5678", return "5678"). Only relevant for transfers between accounts. Return empty string if not found or not a transfer.
 - "payment_method": one of "zelle", "debit_card", "credit_card", "ach", "transfer", "check", "other". Determine from context (e.g. "Zelle payment" -> "zelle", "Visa debit card" -> "debit_card", "credit card purchase" -> "credit_card", transfer between accounts -> "transfer").
 
 If you cannot determine a field, use reasonable defaults. For date, use today's date if unclear.

@@ -80,9 +80,13 @@ func (h *IngestHandler) ImportCSV(c *gin.Context) {
 
 		var categoryID *string
 		if txn.category != "" {
+			resolvedCat := txn.category
+			if strings.EqualFold(resolvedCat, "Transfer") {
+				resolvedCat = verifyCSVTransfer(h.pool, userID, accountIDPtr, txn.txnType)
+			}
 			err = h.pool.QueryRow(context.Background(),
 				"SELECT id FROM categories WHERE LOWER(name) = LOWER($1)",
-				txn.category,
+				resolvedCat,
 			).Scan(&categoryID)
 			if err != nil {
 				categoryID = nil
@@ -94,9 +98,13 @@ func (h *IngestHandler) ImportCSV(c *gin.Context) {
 			if parseErr != nil {
 				log.Printf("CSV row %d LLM categorization failed: %v", i+1, parseErr)
 			} else {
+				resolvedCat := parsed.Category
+				if strings.EqualFold(resolvedCat, "Transfer") {
+					resolvedCat = verifyCSVTransferWithParsed(h.pool, userID, accountIDPtr, parsed)
+				}
 				err = h.pool.QueryRow(context.Background(),
 					"SELECT id FROM categories WHERE LOWER(name) = LOWER($1)",
-					parsed.Category,
+					resolvedCat,
 				).Scan(&categoryID)
 				if err != nil {
 					categoryID = nil
@@ -293,4 +301,71 @@ func parseDate(s string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("unparseable date: %s", s)
+}
+
+// verifyCSVTransfer checks whether a CSV-sourced "Transfer" category is valid.
+// For CSV imports the account_id is user-selected, so we only verify that the
+// destination account exists. Without a from-account last4 from the CSV we
+// cannot confirm an internal transfer, so we reclassify.
+func verifyCSVTransfer(pool *pgxpool.Pool, userID string, accountIDPtr *string, txnType string) string {
+	if accountIDPtr == nil {
+		return csvFallbackCategory(txnType)
+	}
+
+	var count int
+	err := pool.QueryRow(context.Background(),
+		"SELECT COUNT(*) FROM accounts WHERE user_id = $1 AND id != $2 AND institution = (SELECT institution FROM accounts WHERE id = $2)",
+		userID, *accountIDPtr,
+	).Scan(&count)
+	if err != nil || count == 0 {
+		return csvFallbackCategory(txnType)
+	}
+
+	return "Transfer"
+}
+
+// verifyCSVTransferWithParsed uses the LLM-parsed from_account_last_four to
+// verify if a transfer is between the user's own accounts at the same bank.
+func verifyCSVTransferWithParsed(pool *pgxpool.Pool, userID string, accountIDPtr *string, parsed *parser.ParsedTransaction) string {
+	fromFour := parsed.FromAccountLastFour
+	if fromFour == "" {
+		fromFour = parsed.AccountLastFour
+	}
+	if fromFour == "" {
+		log.Printf("CSV transfer verification: no from-account last4, reclassifying")
+		return csvFallbackCategory(parsed.Type)
+	}
+
+	var fromInstitution string
+	err := pool.QueryRow(context.Background(),
+		"SELECT institution FROM accounts WHERE user_id = $1 AND last_four = $2",
+		userID, fromFour,
+	).Scan(&fromInstitution)
+	if err != nil {
+		log.Printf("CSV transfer verification: from-account %s not in user's accounts, reclassifying", fromFour)
+		return csvFallbackCategory(parsed.Type)
+	}
+
+	if accountIDPtr != nil {
+		var destInstitution string
+		err = pool.QueryRow(context.Background(),
+			"SELECT institution FROM accounts WHERE id = $1",
+			*accountIDPtr,
+		).Scan(&destInstitution)
+		if err == nil && !strings.EqualFold(fromInstitution, destInstitution) {
+			log.Printf("CSV transfer verification: from-account %s (%s) and dest (%s) at different banks",
+				fromFour, fromInstitution, destInstitution)
+			return csvFallbackCategory(parsed.Type)
+		}
+	}
+
+	log.Printf("CSV transfer verification: confirmed internal transfer (from-account %s at %s)", fromFour, fromInstitution)
+	return "Transfer"
+}
+
+func csvFallbackCategory(txnType string) string {
+	if strings.EqualFold(txnType, "credit") {
+		return "Income"
+	}
+	return "Other"
 }

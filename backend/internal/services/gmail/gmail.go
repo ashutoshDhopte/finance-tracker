@@ -243,6 +243,58 @@ func (s *Service) resolveAccountID(ctx context.Context, parsed *parser.ParsedTra
 	return nil
 }
 
+// verifyTransferCategory checks whether a transaction tagged as "Transfer" by
+// the LLM is actually an internal transfer between the user's own accounts at
+// the same bank. It looks up from_account_last_four in the user's accounts and
+// checks that both accounts share the same institution. If the from-account is
+// not found or is at a different institution, the category is changed to
+// "Income" (for credits) or "Other" (for debits).
+func (s *Service) verifyTransferCategory(ctx context.Context, parsed *parser.ParsedTransaction, destAccountID *string) string {
+	fromFour := parsed.FromAccountLastFour
+	if fromFour == "" {
+		fromFour = parsed.AccountLastFour
+	}
+
+	if fromFour == "" {
+		log.Printf("transfer verification: no from-account last4 found, reclassifying")
+		return s.fallbackCategory(parsed.Type)
+	}
+
+	var fromInstitution string
+	err := s.pool.QueryRow(ctx,
+		"SELECT institution FROM accounts WHERE user_id = $1 AND last_four = $2",
+		s.userID, fromFour,
+	).Scan(&fromInstitution)
+	if err != nil {
+		log.Printf("transfer verification: from-account %s not found in user's accounts, reclassifying as %s",
+			fromFour, s.fallbackCategory(parsed.Type))
+		return s.fallbackCategory(parsed.Type)
+	}
+
+	if destAccountID != nil {
+		var destInstitution string
+		err = s.pool.QueryRow(ctx,
+			"SELECT institution FROM accounts WHERE id = $1",
+			*destAccountID,
+		).Scan(&destInstitution)
+		if err == nil && !strings.EqualFold(fromInstitution, destInstitution) {
+			log.Printf("transfer verification: from-account %s (%s) and dest-account (%s) are at different banks, reclassifying",
+				fromFour, fromInstitution, destInstitution)
+			return s.fallbackCategory(parsed.Type)
+		}
+	}
+
+	log.Printf("transfer verification: confirmed internal transfer (from-account %s at %s)", fromFour, fromInstitution)
+	return "Transfer"
+}
+
+func (s *Service) fallbackCategory(txnType string) string {
+	if strings.EqualFold(txnType, "credit") {
+		return "Income"
+	}
+	return "Other"
+}
+
 func (s *Service) processEmail(ctx context.Context, body, msgID string) string {
 	parsed, err := s.parserSvc.Parse(ctx, body)
 	if err != nil {
@@ -266,6 +318,12 @@ func (s *Service) processEmail(ctx context.Context, body, msgID string) string {
 		return "skipped"
 	}
 
+	accountID := s.resolveAccountID(ctx, parsed)
+
+	if strings.EqualFold(parsed.Category, "Transfer") {
+		parsed.Category = s.verifyTransferCategory(ctx, parsed, accountID)
+	}
+
 	var categoryID *string
 	err = s.pool.QueryRow(ctx,
 		"SELECT id FROM categories WHERE LOWER(name) = LOWER($1)",
@@ -275,8 +333,6 @@ func (s *Service) processEmail(ctx context.Context, body, msgID string) string {
 		log.Printf("category lookup failed for %q, using nil", parsed.Category)
 		categoryID = nil
 	}
-
-	accountID := s.resolveAccountID(ctx, parsed)
 
 	confidence := float32(parsed.Confidence)
 	_, err = s.pool.Exec(ctx, `
