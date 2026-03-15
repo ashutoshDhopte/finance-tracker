@@ -209,6 +209,18 @@ func (s *Service) logParseFailure(msgID string, err error, body string) {
 func (s *Service) resolveAccountID(ctx context.Context, parsed *parser.ParsedTransaction) *string {
 	method := strings.ToLower(parsed.PaymentMethod)
 
+	// Match by debit card last 4 digits
+	if method == "debit_card" && parsed.AccountLastFour != "" {
+		var id string
+		err := s.pool.QueryRow(ctx,
+			"SELECT id FROM accounts WHERE user_id = $1 AND debit_card_last_four = $2",
+			s.userID, parsed.AccountLastFour,
+		).Scan(&id)
+		if err == nil {
+			return &id
+		}
+	}
+
 	if method == "zelle" || method == "debit_card" {
 		var id string
 		err := s.pool.QueryRow(ctx,
@@ -222,11 +234,11 @@ func (s *Service) resolveAccountID(ctx context.Context, parsed *parser.ParsedTra
 	}
 
 	if parsed.AccountLastFour != "" {
-		var id, accType string
+		var id string
 		err := s.pool.QueryRow(ctx,
-			"SELECT id, account_type FROM accounts WHERE user_id = $1 AND last_four = $2",
+			"SELECT id FROM accounts WHERE user_id = $1 AND (last_four = $2 OR debit_card_last_four = $2)",
 			s.userID, parsed.AccountLastFour,
-		).Scan(&id, &accType)
+		).Scan(&id)
 		if err == nil {
 			return &id
 		}

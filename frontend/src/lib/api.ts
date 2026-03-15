@@ -151,6 +151,7 @@ class ApiClient {
     institution: string;
     account_type: string;
     last_four?: string;
+    debit_card_last_four?: string;
   }): Promise<{ id: string }> {
     return this.request("/accounts", {
       method: "POST",
@@ -163,6 +164,7 @@ class ApiClient {
     institution?: string;
     account_type?: string;
     last_four?: string | null;
+    debit_card_last_four?: string | null;
   }): Promise<void> {
     await this.request(`/accounts/${id}`, {
       method: "PUT",

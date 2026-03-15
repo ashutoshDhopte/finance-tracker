@@ -123,7 +123,10 @@ export default function SettingsPage() {
                       {acc.name}
                       {acc.last_four && <span className="text-zinc-500 font-mono ml-1.5">••{acc.last_four}</span>}
                     </p>
-                    <p className="text-xs text-zinc-500">{acc.institution} &middot; {acc.account_type.replace("_", " ")}</p>
+                    <p className="text-xs text-zinc-500">
+                      {acc.institution} &middot; {acc.account_type.replace("_", " ")}
+                      {acc.debit_card_last_four && <span className="ml-1">&middot; Card ••{acc.debit_card_last_four}</span>}
+                    </p>
                   </div>
                   <button
                     onClick={() => setEditingAccount(acc)}
@@ -248,6 +251,7 @@ function AddAccountModal({ open, onClose, onCreated }: { open: boolean; onClose:
   const [institution, setInstitution] = useState("");
   const [accountType, setAccountType] = useState("checking");
   const [lastFour, setLastFour] = useState("");
+  const [debitCardLastFour, setDebitCardLastFour] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -261,11 +265,13 @@ function AddAccountModal({ open, onClose, onCreated }: { open: boolean; onClose:
         institution,
         account_type: accountType,
         last_four: lastFour || undefined,
+        debit_card_last_four: debitCardLastFour || undefined,
       });
       setName("");
       setInstitution("");
       setAccountType("checking");
       setLastFour("");
+      setDebitCardLastFour("");
       onClose();
       onCreated();
     } catch (err) {
@@ -319,7 +325,7 @@ function AddAccountModal({ open, onClose, onCreated }: { open: boolean; onClose:
             </select>
           </div>
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Last 4 digits</label>
+            <label className="block text-xs text-zinc-400 mb-1">Account last 4</label>
             <input
               type="text"
               value={lastFour}
@@ -330,6 +336,20 @@ function AddAccountModal({ open, onClose, onCreated }: { open: boolean; onClose:
               pattern="\d{4}"
             />
           </div>
+        </div>
+
+        <div>
+          <label className="block text-xs text-zinc-400 mb-1">Linked debit card last 4</label>
+          <input
+            type="text"
+            value={debitCardLastFour}
+            onChange={(e) => setDebitCardLastFour(e.target.value.replace(/\D/g, "").slice(0, 4))}
+            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            placeholder="5678"
+            maxLength={4}
+            pattern="\d{0,4}"
+          />
+          <p className="text-xs text-zinc-600 mt-1">Transactions from this debit card will be linked to this account</p>
         </div>
 
         <div className="flex justify-end gap-3 pt-2">
@@ -350,6 +370,7 @@ function EditAccountModal({ open, account, onClose, onSaved }: { open: boolean; 
   const [institution, setInstitution] = useState(account.institution);
   const [accountType, setAccountType] = useState<string>(account.account_type);
   const [lastFour, setLastFour] = useState(account.last_four || "");
+  const [debitCardLastFour, setDebitCardLastFour] = useState(account.debit_card_last_four || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -363,6 +384,7 @@ function EditAccountModal({ open, account, onClose, onSaved }: { open: boolean; 
         institution,
         account_type: accountType,
         last_four: lastFour || null,
+        debit_card_last_four: debitCardLastFour || null,
       });
       onClose();
       onSaved();
@@ -415,7 +437,7 @@ function EditAccountModal({ open, account, onClose, onSaved }: { open: boolean; 
             </select>
           </div>
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Last 4 digits</label>
+            <label className="block text-xs text-zinc-400 mb-1">Account last 4</label>
             <input
               type="text"
               value={lastFour}
@@ -426,6 +448,20 @@ function EditAccountModal({ open, account, onClose, onSaved }: { open: boolean; 
               pattern="\d{0,4}"
             />
           </div>
+        </div>
+
+        <div>
+          <label className="block text-xs text-zinc-400 mb-1">Linked debit card last 4</label>
+          <input
+            type="text"
+            value={debitCardLastFour}
+            onChange={(e) => setDebitCardLastFour(e.target.value.replace(/\D/g, "").slice(0, 4))}
+            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            placeholder="5678"
+            maxLength={4}
+            pattern="\d{0,4}"
+          />
+          <p className="text-xs text-zinc-600 mt-1">Transactions from this debit card will be linked to this account</p>
         </div>
 
         <div className="flex justify-end gap-3 pt-2">

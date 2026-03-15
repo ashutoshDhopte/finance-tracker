@@ -2,6 +2,7 @@ export interface Transaction {
   id: string;
   user_id: string;
   account_id?: string;
+  account_name?: string;
   amount: number;
   currency: string;
   merchant_name?: string;
@@ -59,6 +60,7 @@ export interface Account {
   institution: string;
   account_type: "checking" | "savings" | "credit_card" | "investment";
   last_four?: string;
+  debit_card_last_four?: string;
   last_synced_at?: string;
   created_at: string;
   updated_at: string;

@@ -8,6 +8,7 @@ type Transaction struct {
 	ID              string     `json:"id"`
 	UserID          string     `json:"user_id"`
 	AccountID       *string    `json:"account_id,omitempty"`
+	AccountName     *string    `json:"account_name,omitempty"`
 	Amount          float64    `json:"amount"`
 	Currency        string     `json:"currency"`
 	MerchantName    *string    `json:"merchant_name,omitempty"`

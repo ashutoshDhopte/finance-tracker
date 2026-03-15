@@ -32,13 +32,14 @@ func (h *TransactionHandler) List(c *gin.Context) {
 	}
 
 	query := `
-		SELECT t.id, t.user_id, t.account_id, t.amount, t.currency,
+		SELECT t.id, t.user_id, t.account_id, a.name as account_name, t.amount, t.currency,
 		       t.merchant_name, t.merchant_raw, t.category_id, c.name as category_name,
 		       t.transaction_date, t.posted_date, t.txn_type, t.source,
 		       t.source_hash, t.ai_confidence, t.raw_text, t.notes,
 		       t.created_at, t.updated_at
 		FROM transactions t
 		LEFT JOIN categories c ON t.category_id = c.id
+		LEFT JOIN accounts a ON t.account_id = a.id
 		WHERE t.user_id = $1`
 
 	args := []interface{}{userID}
@@ -80,7 +81,7 @@ func (h *TransactionHandler) List(c *gin.Context) {
 		argIdx++
 	}
 
-	countQuery := strings.Replace(query, `SELECT t.id, t.user_id, t.account_id, t.amount, t.currency,
+	countQuery := strings.Replace(query, `SELECT t.id, t.user_id, t.account_id, a.name as account_name, t.amount, t.currency,
 		       t.merchant_name, t.merchant_raw, t.category_id, c.name as category_name,
 		       t.transaction_date, t.posted_date, t.txn_type, t.source,
 		       t.source_hash, t.ai_confidence, t.raw_text, t.notes,
@@ -102,7 +103,7 @@ func (h *TransactionHandler) List(c *gin.Context) {
 	for rows.Next() {
 		var t models.Transaction
 		if err := rows.Scan(
-			&t.ID, &t.UserID, &t.AccountID, &t.Amount, &t.Currency,
+			&t.ID, &t.UserID, &t.AccountID, &t.AccountName, &t.Amount, &t.Currency,
 			&t.MerchantName, &t.MerchantRaw, &t.CategoryID, &t.CategoryName,
 			&t.TransactionDate, &t.PostedDate, &t.TxnType, &t.Source,
 			&t.SourceHash, &t.AIConfidence, &t.RawText, &t.Notes,
@@ -123,17 +124,18 @@ func (h *TransactionHandler) Get(c *gin.Context) {
 
 	var t models.Transaction
 	err := h.pool.QueryRow(context.Background(), `
-		SELECT t.id, t.user_id, t.account_id, t.amount, t.currency,
+		SELECT t.id, t.user_id, t.account_id, a.name as account_name, t.amount, t.currency,
 		       t.merchant_name, t.merchant_raw, t.category_id, c.name as category_name,
 		       t.transaction_date, t.posted_date, t.txn_type, t.source,
 		       t.source_hash, t.ai_confidence, t.raw_text, t.notes,
 		       t.created_at, t.updated_at
 		FROM transactions t
 		LEFT JOIN categories c ON t.category_id = c.id
+		LEFT JOIN accounts a ON t.account_id = a.id
 		WHERE t.id = $1 AND t.user_id = $2`,
 		id, userID,
 	).Scan(
-		&t.ID, &t.UserID, &t.AccountID, &t.Amount, &t.Currency,
+		&t.ID, &t.UserID, &t.AccountID, &t.AccountName, &t.Amount, &t.Currency,
 		&t.MerchantName, &t.MerchantRaw, &t.CategoryID, &t.CategoryName,
 		&t.TransactionDate, &t.PostedDate, &t.TxnType, &t.Source,
 		&t.SourceHash, &t.AIConfidence, &t.RawText, &t.Notes,

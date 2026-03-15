@@ -271,6 +271,7 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium text-white">{txn.merchant_name || "Unknown"}</p>
                     <p className="text-xs text-zinc-500">
                       {txn.category_name || "Uncategorized"} &middot; {formatDate(txn.transaction_date)}
+                      {txn.account_name && <> &middot; {txn.account_name}</>}
                     </p>
                   </div>
                 </div>
