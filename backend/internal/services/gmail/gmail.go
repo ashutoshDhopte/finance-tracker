@@ -142,7 +142,8 @@ func (s *Service) SyncDays(ctx context.Context, days int) (imported, skipped, fa
 			continue
 		}
 
-		result := s.processEmail(ctx, body, msg.Id)
+		emailDate := extractEmailDate(full)
+		result := s.processEmail(ctx, body, msg.Id, emailDate)
 		switch result {
 		case "imported":
 			imported++
@@ -186,8 +187,44 @@ func (s *Service) poll(ctx context.Context) {
 			continue
 		}
 
-		s.processEmail(ctx, body, msg.Id)
+		emailDate := extractEmailDate(full)
+		s.processEmail(ctx, body, msg.Id, emailDate)
 	}
+}
+
+// sanitizeDate checks if the LLM-parsed date is reasonable compared to the
+// email's received date. If the parsed date is more than 3 days away from the
+// email date, the email date is used instead (the LLM likely hallucinated).
+func sanitizeDate(parsedDate, emailDate string) string {
+	if emailDate == "" {
+		return parsedDate
+	}
+	pDate, pErr := time.Parse("2006-01-02", parsedDate)
+	eDate, eErr := time.Parse("2006-01-02", emailDate)
+	if pErr != nil || eErr != nil {
+		if pErr != nil {
+			return emailDate
+		}
+		return parsedDate
+	}
+	diff := pDate.Sub(eDate)
+	if diff < 0 {
+		diff = -diff
+	}
+	if diff > 3*24*time.Hour {
+		log.Printf("date sanity check: LLM date %s is %d days from email date %s, using email date",
+			parsedDate, int(diff.Hours()/24), emailDate)
+		return emailDate
+	}
+	return parsedDate
+}
+
+func extractEmailDate(msg *gmail.Message) string {
+	if msg.InternalDate > 0 {
+		t := time.Unix(msg.InternalDate/1000, 0)
+		return t.Format("2006-01-02")
+	}
+	return time.Now().Format("2006-01-02")
 }
 
 func truncate(s string, max int) string {
@@ -307,12 +344,14 @@ func (s *Service) fallbackCategory(txnType string) string {
 	return "Other"
 }
 
-func (s *Service) processEmail(ctx context.Context, body, msgID string) string {
-	parsed, err := s.parserSvc.Parse(ctx, body)
+func (s *Service) processEmail(ctx context.Context, body, msgID, emailDate string) string {
+	parsed, err := s.parserSvc.ParseWithDate(ctx, body, emailDate)
 	if err != nil {
 		s.logParseFailure(msgID, err, body)
 		return "failed"
 	}
+
+	parsed.Date = sanitizeDate(parsed.Date, emailDate)
 
 	if parsed.Amount == 0 {
 		log.Printf("skipping non-transactional email [msg=%s]: no amount found (description: %s)", msgID, parsed.Description)

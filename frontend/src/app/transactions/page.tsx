@@ -242,7 +242,7 @@ function TransactionsContent() {
       {/* Transaction list */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
         {/* Table header */}
-        <div className="hidden sm:grid grid-cols-[1fr_120px_120px_100px_110px_64px] px-5 py-3 border-b border-zinc-800 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+        <div className="hidden sm:grid grid-cols-[1fr_130px_140px_110px_110px_64px] gap-4 px-5 py-3 border-b border-zinc-800 text-xs font-medium text-zinc-500 uppercase tracking-wider">
           <span>Transaction</span>
           <span>Category</span>
           <span>Account</span>
@@ -262,7 +262,7 @@ function TransactionsContent() {
             {transactions.map((txn) => (
               <div
                 key={txn.id}
-                className="px-5 py-3 flex flex-col sm:grid sm:grid-cols-[1fr_120px_120px_100px_110px_64px] items-start sm:items-center hover:bg-zinc-800/40 transition-colors"
+                className="px-5 py-3 flex flex-col sm:grid sm:grid-cols-[1fr_130px_140px_110px_110px_64px] gap-4 items-start sm:items-center hover:bg-zinc-800/40 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${txn.txn_type === "credit" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>

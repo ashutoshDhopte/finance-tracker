@@ -74,6 +74,7 @@ func (h *IngestHandler) ImportCSV(c *gin.Context) {
 		hash := dedup.GenerateHash(txn.amount, txn.date, txn.merchant)
 		exists, _ := dedupSvc.Exists(context.Background(), hash)
 		if exists {
+			log.Printf("CSV row %d duplicate skipped: %s $%.2f on %s (hash: %s)", i+1, txn.merchant, txn.amount, txn.date, hash[:12])
 			skipped++
 			continue
 		}

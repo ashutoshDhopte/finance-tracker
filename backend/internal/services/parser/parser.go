@@ -59,16 +59,30 @@ Some emails may be informational (e.g. security alerts, account updates) and not
 
 const maxInputChars = 3000
 
+func (s *Service) ParseWithDate(ctx context.Context, rawText string, emailDate string) (*ParsedTransaction, error) {
+	hint := ""
+	if emailDate != "" {
+		hint = fmt.Sprintf("\n\nThis email was received on %s. Use this as the transaction date if no date is mentioned in the email body.", emailDate)
+	}
+	return s.parse(ctx, rawText, hint)
+}
+
 func (s *Service) Parse(ctx context.Context, rawText string) (*ParsedTransaction, error) {
+	return s.parse(ctx, rawText, "")
+}
+
+func (s *Service) parse(ctx context.Context, rawText string, extraHint string) (*ParsedTransaction, error) {
 	if len(rawText) > maxInputChars {
 		rawText = rawText[:maxInputChars]
 	}
+
+	userMessage := "Parse this bank notification:\n\n" + rawText + extraHint
 
 	reqBody := map[string]interface{}{
 		"model": s.model,
 		"messages": []map[string]string{
 			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": "Parse this bank notification:\n\n" + rawText},
+			{"role": "user", "content": userMessage},
 		},
 		"stream": false,
 		"format": "json",
