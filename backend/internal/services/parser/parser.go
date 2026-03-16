@@ -44,8 +44,8 @@ Respond ONLY with a valid JSON object (no markdown, no explanation) containing t
 - "amount": number (positive value, e.g. 47.23). If no transaction amount is present in the email, return 0.
 - "merchant": string (cleaned-up merchant name, e.g. "Trader Joe's" not "TRADER JOE'S #123")
 - "date": string in YYYY-MM-DD format
-- "transaction_type": "credit" if money is coming INTO the account (received, deposited, refunded), "debit" if money is going OUT (sent, paid, purchased, withdrawn). Key signals:
-  - "You sent", "You paid", "payment to", "purchase", "withdrawal", "transferred to" → "debit"
+- "transaction_type": "credit" if money is coming INTO the account (received, deposited, refunded), "debit" if money is going OUT (sent, paid, purchased, withdrawn). A transaction at a merchant/store is always a debit. Key signals:
+  - "You made a transaction", "You sent", "You paid", "payment to", "purchase", "withdrawal", "transferred to", "transaction at" → "debit"
   - "You received", "deposited", "refund", "payment from", "transferred from", "direct deposit" → "credit"
 - "suggested_category": one of: Groceries, Dining, Gas, Transportation, Shopping, Bills & Utilities, Rent & Mortgage, Healthcare, Entertainment, Subscriptions, Income, Transfer, ATM, Fees, Other
 - "confidence": number between 0 and 1 indicating how confident you are in the parsing

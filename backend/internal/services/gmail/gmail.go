@@ -244,20 +244,26 @@ func (s *Service) logParseFailure(msgID string, err error, body string) {
 }
 
 func (s *Service) resolveAccountID(ctx context.Context, parsed *parser.ParsedTransaction) *string {
-	method := strings.ToLower(parsed.PaymentMethod)
-
-	// Match by debit card last 4 digits
-	if method == "debit_card" && parsed.AccountLastFour != "" {
-		var id string
+	if parsed.AccountLastFour != "" {
+		var id, acctType string
 		err := s.pool.QueryRow(ctx,
-			"SELECT id FROM accounts WHERE user_id = $1 AND debit_card_last_four = $2",
+			"SELECT id, account_type FROM accounts WHERE user_id = $1 AND (last_four = $2 OR debit_card_last_four = $2)",
 			s.userID, parsed.AccountLastFour,
-		).Scan(&id)
+		).Scan(&id, &acctType)
 		if err == nil {
+			switch acctType {
+			case "credit_card":
+				parsed.PaymentMethod = "credit_card"
+			case "checking", "savings":
+				if parsed.PaymentMethod == "" || parsed.PaymentMethod == "other" {
+					parsed.PaymentMethod = "debit_card"
+				}
+			}
 			return &id
 		}
 	}
 
+	method := strings.ToLower(parsed.PaymentMethod)
 	if method == "zelle" || method == "debit_card" {
 		var id string
 		err := s.pool.QueryRow(ctx,
@@ -268,17 +274,6 @@ func (s *Service) resolveAccountID(ctx context.Context, parsed *parser.ParsedTra
 			return &id
 		}
 		return nil
-	}
-
-	if parsed.AccountLastFour != "" {
-		var id string
-		err := s.pool.QueryRow(ctx,
-			"SELECT id FROM accounts WHERE user_id = $1 AND (last_four = $2 OR debit_card_last_four = $2)",
-			s.userID, parsed.AccountLastFour,
-		).Scan(&id)
-		if err == nil {
-			return &id
-		}
 	}
 
 	var id string
@@ -337,6 +332,25 @@ func (s *Service) verifyTransferCategory(ctx context.Context, parsed *parser.Par
 	return "Transfer"
 }
 
+var expenseCategories = map[string]bool{
+	"groceries":        true,
+	"dining":           true,
+	"gas":              true,
+	"transportation":   true,
+	"shopping":         true,
+	"bills & utilities": true,
+	"rent & mortgage":  true,
+	"healthcare":       true,
+	"entertainment":    true,
+	"subscriptions":    true,
+	"atm":             true,
+	"fees":            true,
+}
+
+func isExpenseCategory(category string) bool {
+	return expenseCategories[strings.ToLower(category)]
+}
+
 func (s *Service) fallbackCategory(txnType string) string {
 	if strings.EqualFold(txnType, "credit") {
 		return "Income"
@@ -356,6 +370,11 @@ func (s *Service) processEmail(ctx context.Context, body, msgID, emailDate strin
 	if parsed.Amount == 0 {
 		log.Printf("skipping non-transactional email [msg=%s]: no amount found (description: %s)", msgID, parsed.Description)
 		return "skipped"
+	}
+
+	if strings.EqualFold(parsed.Type, "credit") && isExpenseCategory(parsed.Category) {
+		log.Printf("type sanity check: overriding 'credit' → 'debit' (category %q is an expense)", parsed.Category)
+		parsed.Type = "debit"
 	}
 
 	accountID := s.resolveAccountID(ctx, parsed)
