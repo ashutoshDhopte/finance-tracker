@@ -60,6 +60,14 @@ func (h *IngestHandler) ImportCSV(c *gin.Context) {
 	}
 	log.Printf("CSV import: %d rows, bank=%s, headers=%v", len(records)-1, bankType, records[0])
 
+	var accountLastFour string
+	if accountIDPtr != nil {
+		_ = h.pool.QueryRow(context.Background(),
+			"SELECT COALESCE(last_four, '') FROM accounts WHERE id = $1",
+			*accountIDPtr,
+		).Scan(&accountLastFour)
+	}
+
 	var imported, skipped, failed int
 	dedupSvc := dedup.NewService(h.pool)
 
@@ -71,7 +79,7 @@ func (h *IngestHandler) ImportCSV(c *gin.Context) {
 			continue
 		}
 
-		hash := dedup.GenerateHash(txn.amount, txn.date, txn.merchant)
+		hash := dedup.GenerateHash(txn.amount, txn.date, txn.merchant, txn.txnType, accountLastFour)
 		exists, _ := dedupSvc.Exists(context.Background(), hash)
 		if exists {
 			log.Printf("CSV row %d duplicate skipped: %s $%.2f on %s (hash: %s)", i+1, txn.merchant, txn.amount, txn.date, hash[:12])

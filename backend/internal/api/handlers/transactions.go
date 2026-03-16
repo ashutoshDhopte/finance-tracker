@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ash/finance-tracker/backend/internal/models"
+	"github.com/ash/finance-tracker/backend/internal/services/dedup"
 )
 
 type TransactionHandler struct {
@@ -274,4 +276,54 @@ func (h *TransactionHandler) Delete(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+}
+
+func (h *TransactionHandler) Rehash(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	rows, err := h.pool.Query(context.Background(), `
+		SELECT t.id, t.amount, t.transaction_date, t.merchant_name, t.txn_type,
+		       COALESCE(a.last_four, '') as account_last_four
+		FROM transactions t
+		LEFT JOIN accounts a ON t.account_id = a.id
+		WHERE t.user_id = $1`, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query transactions"})
+		return
+	}
+	defer rows.Close()
+
+	var updated, failed int
+	for rows.Next() {
+		var id string
+		var amount float64
+		var txnDate time.Time
+		var merchant, txnType, accountLastFour string
+
+		if err := rows.Scan(&id, &amount, &txnDate, &merchant, &txnType, &accountLastFour); err != nil {
+			log.Printf("rehash scan error: %v", err)
+			failed++
+			continue
+		}
+
+		dateStr := txnDate.Format("2006-01-02")
+		newHash := dedup.GenerateHash(amount, dateStr, merchant, txnType, accountLastFour)
+
+		_, err := h.pool.Exec(context.Background(),
+			"UPDATE transactions SET source_hash = $1 WHERE id = $2",
+			newHash, id)
+		if err != nil {
+			log.Printf("rehash update error for txn %s: %v", id, err)
+			failed++
+			continue
+		}
+		updated++
+	}
+
+	log.Printf("rehash complete: %d updated, %d failed", updated, failed)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "rehash complete",
+		"updated": updated,
+		"failed":  failed,
+	})
 }

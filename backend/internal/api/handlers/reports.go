@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -23,6 +24,7 @@ func NewReportHandler(pool *pgxpool.Pool) *ReportHandler {
 func (h *ReportHandler) Monthly(c *gin.Context) {
 	userID := c.GetString("user_id")
 	month := c.Query("month")
+	accountID := c.Query("account_id")
 
 	var startDate, endDate string
 	if month != "" {
@@ -36,7 +38,7 @@ func (h *ReportHandler) Monthly(c *gin.Context) {
 		endDate = end.Format("2006-01-02")
 	}
 
-	summary, err := h.buildSummary(userID, startDate, endDate)
+	summary, err := h.buildSummary(userID, startDate, endDate, accountID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate report"})
 		return
@@ -49,13 +51,14 @@ func (h *ReportHandler) Biweekly(c *gin.Context) {
 	userID := c.GetString("user_id")
 	startDate := c.Query("start")
 	endDate := c.Query("end")
+	accountID := c.Query("account_id")
 
 	if startDate == "" || endDate == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "start and end dates required"})
 		return
 	}
 
-	summary, err := h.buildSummary(userID, startDate, endDate)
+	summary, err := h.buildSummary(userID, startDate, endDate, accountID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate report"})
 		return
@@ -106,21 +109,30 @@ func (h *ReportHandler) Categories(c *gin.Context) {
 func (h *ReportHandler) Trends(c *gin.Context) {
 	userID := c.GetString("user_id")
 	months, _ := strconv.Atoi(c.DefaultQuery("months", "6"))
+	accountID := c.Query("account_id")
 	if months < 1 || months > 24 {
 		months = 6
 	}
 
 	cutoff := time.Now().AddDate(0, -months, 0).Format("2006-01-02")
-	rows, err := h.pool.Query(context.Background(), `
+
+	query := `
 		SELECT TO_CHAR(t.transaction_date, 'YYYY-MM') as month,
 		       COALESCE(SUM(CASE WHEN t.txn_type = 'credit' AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0) as income,
 		       COALESCE(SUM(CASE WHEN t.txn_type = 'debit'  AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0) as expenses
 		FROM transactions t
 		LEFT JOIN categories c ON t.category_id = c.id
-		WHERE t.user_id = $1 AND t.transaction_date >= $2
-		GROUP BY month
-		ORDER BY month`,
-		userID, cutoff)
+		WHERE t.user_id = $1 AND t.transaction_date >= $2`
+	args := []interface{}{userID, cutoff}
+
+	if accountID != "" {
+		query += " AND t.account_id = $3"
+		args = append(args, accountID)
+	}
+
+	query += " GROUP BY month ORDER BY month"
+
+	rows, err := h.pool.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query trends"})
 		return
@@ -141,63 +153,56 @@ func (h *ReportHandler) Trends(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"trends": trends, "months": months})
 }
 
-func (h *ReportHandler) buildSummary(userID, startDate, endDate string) (*models.ReportSummary, error) {
+func (h *ReportHandler) buildSummary(userID, startDate, endDate, accountID string) (*models.ReportSummary, error) {
 	var totalIncome, totalExpenses, totalTransfers float64
 	allTime := startDate == "" || endDate == ""
 
-	if allTime {
-		err := h.pool.QueryRow(context.Background(), `
-			SELECT
-				COALESCE(SUM(CASE WHEN txn_type = 'credit' AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0),
-				COALESCE(SUM(CASE WHEN txn_type = 'debit'  AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0),
-				COALESCE(SUM(CASE WHEN c.name = 'Transfer' THEN t.amount ELSE 0 END), 0)
-			FROM transactions t
-			LEFT JOIN categories c ON t.category_id = c.id
-			WHERE t.user_id = $1`,
-			userID,
-		).Scan(&totalIncome, &totalExpenses, &totalTransfers)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		err := h.pool.QueryRow(context.Background(), `
-			SELECT
-				COALESCE(SUM(CASE WHEN txn_type = 'credit' AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0),
-				COALESCE(SUM(CASE WHEN txn_type = 'debit'  AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0),
-				COALESCE(SUM(CASE WHEN c.name = 'Transfer' THEN t.amount ELSE 0 END), 0)
-			FROM transactions t
-			LEFT JOIN categories c ON t.category_id = c.id
-			WHERE t.user_id = $1 AND t.transaction_date >= $2 AND t.transaction_date < $3`,
-			userID, startDate, endDate,
-		).Scan(&totalIncome, &totalExpenses, &totalTransfers)
-		if err != nil {
-			return nil, err
-		}
+	sumQuery := `
+		SELECT
+			COALESCE(SUM(CASE WHEN txn_type = 'credit' AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN txn_type = 'debit'  AND (c.name IS NULL OR c.name != 'Transfer') THEN t.amount ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN c.name = 'Transfer' THEN t.amount ELSE 0 END), 0)
+		FROM transactions t
+		LEFT JOIN categories c ON t.category_id = c.id
+		WHERE t.user_id = $1`
+	sumArgs := []interface{}{userID}
+	argIdx := 2
+
+	if !allTime {
+		sumQuery += fmt.Sprintf(" AND t.transaction_date >= $%d AND t.transaction_date < $%d", argIdx, argIdx+1)
+		sumArgs = append(sumArgs, startDate, endDate)
+		argIdx += 2
+	}
+	if accountID != "" {
+		sumQuery += fmt.Sprintf(" AND t.account_id = $%d", argIdx)
+		sumArgs = append(sumArgs, accountID)
+		argIdx++
 	}
 
-	var catQuery string
-	var catArgs []interface{}
-	if allTime {
-		catQuery = `
-			SELECT c.id, c.name, c.color, c.icon,
-			       COALESCE(SUM(t.amount), 0), COUNT(t.id)
-			FROM categories c
-			JOIN transactions t ON t.category_id = c.id
-			WHERE t.user_id = $1
-			GROUP BY c.id, c.name, c.color, c.icon
-			ORDER BY SUM(t.amount) DESC`
-		catArgs = []interface{}{userID}
-	} else {
-		catQuery = `
-			SELECT c.id, c.name, c.color, c.icon,
-			       COALESCE(SUM(t.amount), 0), COUNT(t.id)
-			FROM categories c
-			JOIN transactions t ON t.category_id = c.id
-			WHERE t.user_id = $1 AND t.transaction_date >= $2 AND t.transaction_date < $3
-			GROUP BY c.id, c.name, c.color, c.icon
-			ORDER BY SUM(t.amount) DESC`
-		catArgs = []interface{}{userID, startDate, endDate}
+	err := h.pool.QueryRow(context.Background(), sumQuery, sumArgs...).Scan(&totalIncome, &totalExpenses, &totalTransfers)
+	if err != nil {
+		return nil, err
 	}
+
+	catQuery := `
+		SELECT c.id, c.name, c.color, c.icon,
+		       COALESCE(SUM(t.amount), 0), COUNT(t.id)
+		FROM categories c
+		JOIN transactions t ON t.category_id = c.id
+		WHERE t.user_id = $1`
+	catArgs := []interface{}{userID}
+	catIdx := 2
+
+	if !allTime {
+		catQuery += fmt.Sprintf(" AND t.transaction_date >= $%d AND t.transaction_date < $%d", catIdx, catIdx+1)
+		catArgs = append(catArgs, startDate, endDate)
+		catIdx += 2
+	}
+	if accountID != "" {
+		catQuery += fmt.Sprintf(" AND t.account_id = $%d", catIdx)
+		catArgs = append(catArgs, accountID)
+	}
+	catQuery += " GROUP BY c.id, c.name, c.color, c.icon ORDER BY SUM(t.amount) DESC"
 
 	rows, err := h.pool.Query(context.Background(), catQuery, catArgs...)
 	if err != nil {
@@ -214,32 +219,27 @@ func (h *ReportHandler) buildSummary(userID, startDate, endDate string) (*models
 		cats = append(cats, cs)
 	}
 
-	var accQuery string
-	var accArgs []interface{}
-	if allTime {
-		accQuery = `
-			SELECT a.id, a.name, a.institution, a.account_type, a.last_four,
-			       COALESCE(SUM(CASE WHEN t.txn_type = 'credit' THEN t.amount ELSE 0 END), 0) as income,
-			       COALESCE(SUM(CASE WHEN t.txn_type = 'debit' THEN t.amount ELSE 0 END), 0) as expenses
-			FROM accounts a
-			LEFT JOIN transactions t ON t.account_id = a.id
-			WHERE a.user_id = $1
-			GROUP BY a.id, a.name, a.institution, a.account_type, a.last_four
-			ORDER BY a.name`
-		accArgs = []interface{}{userID}
-	} else {
-		accQuery = `
-			SELECT a.id, a.name, a.institution, a.account_type, a.last_four,
-			       COALESCE(SUM(CASE WHEN t.txn_type = 'credit' THEN t.amount ELSE 0 END), 0) as income,
-			       COALESCE(SUM(CASE WHEN t.txn_type = 'debit' THEN t.amount ELSE 0 END), 0) as expenses
-			FROM accounts a
-			LEFT JOIN transactions t ON t.account_id = a.id
-			     AND t.transaction_date >= $2 AND t.transaction_date < $3
-			WHERE a.user_id = $1
-			GROUP BY a.id, a.name, a.institution, a.account_type, a.last_four
-			ORDER BY a.name`
-		accArgs = []interface{}{userID, startDate, endDate}
+	accQuery := `
+		SELECT a.id, a.name, a.institution, a.account_type, a.last_four,
+		       COALESCE(SUM(CASE WHEN t.txn_type = 'credit' THEN t.amount ELSE 0 END), 0) as income,
+		       COALESCE(SUM(CASE WHEN t.txn_type = 'debit' THEN t.amount ELSE 0 END), 0) as expenses
+		FROM accounts a
+		LEFT JOIN transactions t ON t.account_id = a.id`
+	accArgs := []interface{}{userID}
+	accIdx := 2
+
+	if !allTime {
+		accQuery += fmt.Sprintf(" AND t.transaction_date >= $%d AND t.transaction_date < $%d", accIdx, accIdx+1)
+		accArgs = append(accArgs, startDate, endDate)
+		accIdx += 2
 	}
+
+	accQuery += " WHERE a.user_id = $1"
+	if accountID != "" {
+		accQuery += fmt.Sprintf(" AND a.id = $%d", accIdx)
+		accArgs = append(accArgs, accountID)
+	}
+	accQuery += " GROUP BY a.id, a.name, a.institution, a.account_type, a.last_four ORDER BY a.name"
 
 	accRows, err := h.pool.Query(context.Background(), accQuery, accArgs...)
 	if err != nil {

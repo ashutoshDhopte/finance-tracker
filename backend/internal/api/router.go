@@ -40,6 +40,7 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool, parserSvc *parser.Service
 			auth.POST("/transactions", txnHandler.Create)
 			auth.PUT("/transactions/:id", txnHandler.Update)
 			auth.DELETE("/transactions/:id", txnHandler.Delete)
+			auth.POST("/transactions/rehash", txnHandler.Rehash)
 
 			auth.GET("/categories", catHandler.List)
 			auth.POST("/categories", catHandler.Create)

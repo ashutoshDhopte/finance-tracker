@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatCurrency, formatDate, formatMonth, buildTransactionUrl } from "@/lib/utils";
-import type { Transaction, ReportSummary, TrendPoint, TriggeredAlert, AccountSummary } from "@/lib/types";
+import type { Transaction, ReportSummary, TrendPoint, TriggeredAlert, AccountSummary, Account } from "@/lib/types";
 import {
   TrendingUp,
   TrendingDown,
@@ -18,6 +18,7 @@ import {
   PiggyBank,
   CreditCard,
   Building2,
+  Filter,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -37,15 +38,23 @@ export default function DashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [trends, setTrends] = useState<TrendPoint[]>([]);
   const [alerts, setAlerts] = useState<TriggeredAlert[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    api.getAccounts().then((d) => setAccounts(d.accounts)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     async function load() {
+      setLoading(true);
       try {
+        const accountId = selectedAccount || undefined;
         const [summaryData, txnData, trendData, alertData] = await Promise.all([
-          api.getSummary(),
+          api.getSummary(accountId),
           api.getTransactions({ limit: 8 }),
-          api.getTrends(6),
+          api.getTrends(6, accountId),
           api.checkAlerts(),
         ]);
         setSummary(summaryData);
@@ -59,7 +68,7 @@ export default function DashboardPage() {
       }
     }
     load();
-  }, []);
+  }, [selectedAccount]);
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -104,66 +113,141 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <SummaryCard
-          label="Income"
-          amount={summary?.total_income ?? 0}
-          icon={<TrendingUp className="w-5 h-5" />}
-          color="emerald"
-          href={buildTransactionUrl({ type: "credit" })}
-        />
-        <SummaryCard
-          label="Expenses"
-          amount={summary?.total_expenses ?? 0}
-          icon={<TrendingDown className="w-5 h-5" />}
-          color="red"
-          href={buildTransactionUrl({ type: "debit" })}
-        />
-        <SummaryCard
-          label="Transfers"
-          amount={summary?.total_transfers ?? 0}
-          icon={<ArrowLeftRight className="w-5 h-5" />}
-          color="blue"
-          href={buildTransactionUrl({ category_name: "Transfer" })}
-        />
-        <SummaryCard
-          label="Net"
-          amount={summary?.net ?? 0}
-          icon={<Wallet className="w-5 h-5" />}
-          color={(summary?.net ?? 0) >= 0 ? "emerald" : "red"}
-          href="/transactions"
-        />
-      </div>
+      {/* Filtered section: summary + charts */}
+      <div className={`rounded-xl border p-5 space-y-5 ${selectedAccount ? "border-emerald-500/30 bg-emerald-500/[0.02]" : "border-transparent"}`}>
+        {/* Account filter */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-zinc-400">
+            <Filter className="w-4 h-4" />
+            <span>Filter by account</span>
+          </div>
+          <select
+            value={selectedAccount}
+            onChange={(e) => setSelectedAccount(e.target.value)}
+            className="px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-[180px] cursor-pointer"
+          >
+            <option value="">All accounts</option>
+            {accounts.map((acc) => (
+              <option key={acc.id} value={acc.id}>
+                {acc.name}{acc.last_four ? ` ••${acc.last_four}` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Spending by category */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-zinc-300 mb-4">Spending by Category</h2>
-          {pieData.length > 0 ? (
-            <div className="flex items-center gap-4">
-              <div className="w-48 h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={80}
-                      paddingAngle={3}
-                      dataKey="value"
-                      className="cursor-pointer"
-                      onClick={(_, index) => {
-                        const entry = pieData[index];
-                        if (entry) router.push(buildTransactionUrl({ category: entry.category_id }));
-                      }}
+        {/* Summary cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <SummaryCard
+            label="Income"
+            amount={summary?.total_income ?? 0}
+            icon={<TrendingUp className="w-5 h-5" />}
+            color="emerald"
+            href={buildTransactionUrl({ type: "credit", account: selectedAccount || undefined })}
+          />
+          <SummaryCard
+            label="Expenses"
+            amount={summary?.total_expenses ?? 0}
+            icon={<TrendingDown className="w-5 h-5" />}
+            color="red"
+            href={buildTransactionUrl({ type: "debit", account: selectedAccount || undefined })}
+          />
+          <SummaryCard
+            label="Transfers"
+            amount={summary?.total_transfers ?? 0}
+            icon={<ArrowLeftRight className="w-5 h-5" />}
+            color="blue"
+            href={buildTransactionUrl({ category_name: "Transfer", account: selectedAccount || undefined })}
+          />
+          <SummaryCard
+            label="Net"
+            amount={summary?.net ?? 0}
+            icon={<Wallet className="w-5 h-5" />}
+            color={(summary?.net ?? 0) >= 0 ? "emerald" : "red"}
+            href={buildTransactionUrl({ account: selectedAccount || undefined })}
+          />
+        </div>
+
+        {/* Charts row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Spending by category */}
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+            <h2 className="text-sm font-semibold text-zinc-300 mb-4">Spending by Category</h2>
+            {pieData.length > 0 ? (
+              <div className="flex items-center gap-4">
+                <div className="w-48 h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        paddingAngle={3}
+                        dataKey="value"
+                        className="cursor-pointer"
+                        onClick={(_, index) => {
+                          const entry = pieData[index];
+                          if (entry) router.push(buildTransactionUrl({ category: entry.category_id }));
+                        }}
+                      >
+                        {pieData.map((entry, i) => (
+                          <Cell key={i} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value) => formatCurrency(Number(value))}
+                        contentStyle={{
+                          backgroundColor: "#18181b",
+                          border: "1px solid #3f3f46",
+                          borderRadius: "8px",
+                          color: "#fff",
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex-1 space-y-2">
+                  {pieData.slice(0, 6).map((c) => (
+                    <Link
+                      key={c.name}
+                      href={buildTransactionUrl({ category: c.category_id })}
+                      className="flex items-center justify-between text-sm hover:bg-zinc-800/50 rounded-md px-2 py-1 -mx-2 transition-colors"
                     >
-                      {pieData.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
-                    </Pie>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
+                        <span className="text-zinc-300">{c.name}</span>
+                      </div>
+                      <span className="text-zinc-400 font-mono">{formatCurrency(c.value)}</span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-zinc-500 text-sm py-8 text-center">No spending data yet</p>
+            )}
+          </div>
+
+          {/* Trends chart */}
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+            <h2 className="text-sm font-semibold text-zinc-300 mb-4">Income vs Expenses</h2>
+            {trendData.length > 0 ? (
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData}>
+                    <defs>
+                      <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="expenseGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#ef4444" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                    <XAxis dataKey="month" tick={{ fill: "#71717a", fontSize: 12 }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fill: "#71717a", fontSize: 12 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
                     <Tooltip
                       formatter={(value) => formatCurrency(Number(value))}
                       contentStyle={{
@@ -173,67 +257,15 @@ export default function DashboardPage() {
                         color: "#fff",
                       }}
                     />
-                  </PieChart>
+                    <Area type="monotone" dataKey="Income" stroke="#10b981" fill="url(#incomeGrad)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="Expenses" stroke="#ef4444" fill="url(#expenseGrad)" strokeWidth={2} />
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
-              <div className="flex-1 space-y-2">
-                {pieData.slice(0, 6).map((c) => (
-                  <Link
-                    key={c.name}
-                    href={buildTransactionUrl({ category: c.category_id })}
-                    className="flex items-center justify-between text-sm hover:bg-zinc-800/50 rounded-md px-2 py-1 -mx-2 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
-                      <span className="text-zinc-300">{c.name}</span>
-                    </div>
-                    <span className="text-zinc-400 font-mono">{formatCurrency(c.value)}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <p className="text-zinc-500 text-sm py-8 text-center">No spending data yet</p>
-          )}
-        </div>
-
-        {/* Trends chart */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-zinc-300 mb-4">Income vs Expenses</h2>
-          {trendData.length > 0 ? (
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trendData}>
-                  <defs>
-                    <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="expenseGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#ef4444" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                  <XAxis dataKey="month" tick={{ fill: "#71717a", fontSize: 12 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fill: "#71717a", fontSize: 12 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip
-                    formatter={(value) => formatCurrency(Number(value))}
-                    contentStyle={{
-                      backgroundColor: "#18181b",
-                      border: "1px solid #3f3f46",
-                      borderRadius: "8px",
-                      color: "#fff",
-                    }}
-                  />
-                  <Area type="monotone" dataKey="Income" stroke="#10b981" fill="url(#incomeGrad)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="Expenses" stroke="#ef4444" fill="url(#expenseGrad)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <p className="text-zinc-500 text-sm py-8 text-center">No trend data yet</p>
-          )}
+            ) : (
+              <p className="text-zinc-500 text-sm py-8 text-center">No trend data yet</p>
+            )}
+          </div>
         </div>
       </div>
 

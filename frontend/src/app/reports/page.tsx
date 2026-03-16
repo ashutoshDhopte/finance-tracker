@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatCurrency, getCurrentMonth, formatMonth, getMonthRange, buildTransactionUrl } from "@/lib/utils";
-import type { ReportSummary, TrendPoint, CategorySummary } from "@/lib/types";
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, ArrowLeftRight } from "lucide-react";
+import type { ReportSummary, TrendPoint, CategorySummary, Account } from "@/lib/types";
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, ArrowLeftRight, Filter } from "lucide-react";
 import CategoryIcon from "@/components/CategoryIcon";
 import {
   ResponsiveContainer,
@@ -28,12 +28,35 @@ type ReportTab = "monthly" | "biweekly" | "trends";
 
 export default function ReportsPage() {
   const [tab, setTab] = useState<ReportTab>("monthly");
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState("");
+
+  useEffect(() => {
+    api.getAccounts().then((d) => setAccounts(d.accounts)).catch(() => {});
+  }, []);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Reports</h1>
-        <p className="text-zinc-400 text-sm mt-1">Financial insights and breakdowns</p>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Reports</h1>
+          <p className="text-zinc-400 text-sm mt-1">Financial insights and breakdowns</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-zinc-400" />
+          <select
+            value={selectedAccount}
+            onChange={(e) => setSelectedAccount(e.target.value)}
+            className="px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-[180px] cursor-pointer"
+          >
+            <option value="">All accounts</option>
+            {accounts.map((acc) => (
+              <option key={acc.id} value={acc.id}>
+                {acc.name}{acc.last_four ? ` ••${acc.last_four}` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -51,22 +74,22 @@ export default function ReportsPage() {
         ))}
       </div>
 
-      {tab === "monthly" && <MonthlyReport />}
-      {tab === "biweekly" && <BiweeklyReport />}
-      {tab === "trends" && <TrendsReport />}
+      {tab === "monthly" && <MonthlyReport accountId={selectedAccount} />}
+      {tab === "biweekly" && <BiweeklyReport accountId={selectedAccount} />}
+      {tab === "trends" && <TrendsReport accountId={selectedAccount} />}
     </div>
   );
 }
 
-function MonthlyReport() {
+function MonthlyReport({ accountId }: { accountId: string }) {
   const [month, setMonth] = useState(getCurrentMonth());
   const [summary, setSummary] = useState<ReportSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    api.getMonthlyReport(month).then(setSummary).catch(() => {}).finally(() => setLoading(false));
-  }, [month]);
+    api.getMonthlyReport(month, accountId || undefined).then(setSummary).catch(() => {}).finally(() => setLoading(false));
+  }, [month, accountId]);
 
   function prevMonth() {
     const [y, m] = month.split("-").map(Number);
@@ -103,7 +126,7 @@ function MonthlyReport() {
   );
 }
 
-function BiweeklyReport() {
+function BiweeklyReport({ accountId }: { accountId: string }) {
   const today = new Date();
   const [start, setStart] = useState(() => {
     const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() >= 15 ? 15 : 1);
@@ -120,8 +143,8 @@ function BiweeklyReport() {
 
   useEffect(() => {
     setLoading(true);
-    api.getBiweeklyReport(start, end).then(setSummary).catch(() => {}).finally(() => setLoading(false));
-  }, [start, end]);
+    api.getBiweeklyReport(start, end, accountId || undefined).then(setSummary).catch(() => {}).finally(() => setLoading(false));
+  }, [start, end, accountId]);
 
   if (loading) return <ReportSkeleton />;
 
@@ -153,15 +176,15 @@ function BiweeklyReport() {
   );
 }
 
-function TrendsReport() {
+function TrendsReport({ accountId }: { accountId: string }) {
   const [months, setMonths] = useState(6);
   const [trends, setTrends] = useState<TrendPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    api.getTrends(months).then((d) => setTrends(d.trends)).catch(() => {}).finally(() => setLoading(false));
-  }, [months]);
+    api.getTrends(months, accountId || undefined).then((d) => setTrends(d.trends)).catch(() => {}).finally(() => setLoading(false));
+  }, [months, accountId]);
 
   const chartData = trends.map((t) => ({
     month: formatMonth(t.month),

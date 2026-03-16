@@ -358,7 +358,17 @@ func (s *Service) processEmail(ctx context.Context, body, msgID, emailDate strin
 		return "skipped"
 	}
 
-	hash := dedup.GenerateHash(parsed.Amount, parsed.Date, parsed.Merchant)
+	accountID := s.resolveAccountID(ctx, parsed)
+
+	accountLastFour := ""
+	if accountID != nil {
+		_ = s.pool.QueryRow(ctx,
+			"SELECT COALESCE(last_four, '') FROM accounts WHERE id = $1",
+			*accountID,
+		).Scan(&accountLastFour)
+	}
+
+	hash := dedup.GenerateHash(parsed.Amount, parsed.Date, parsed.Merchant, parsed.Type, accountLastFour)
 	exists, err := s.dedupSvc.Exists(ctx, hash)
 	if err != nil {
 		log.Printf("dedup check error: %v", err)
@@ -368,8 +378,6 @@ func (s *Service) processEmail(ctx context.Context, body, msgID, emailDate strin
 		log.Printf("duplicate transaction skipped (hash: %s)", hash[:12])
 		return "skipped"
 	}
-
-	accountID := s.resolveAccountID(ctx, parsed)
 
 	if strings.EqualFold(parsed.Category, "Transfer") {
 		parsed.Category = s.verifyTransferCategory(ctx, parsed, accountID)

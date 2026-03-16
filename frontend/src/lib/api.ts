@@ -177,24 +177,35 @@ class ApiClient {
   }
 
   // Reports
-  async getSummary(): Promise<ReportSummary> {
-    return this.request("/reports/monthly");
+  async getSummary(accountId?: string): Promise<ReportSummary> {
+    const params = new URLSearchParams();
+    if (accountId) params.set("account_id", accountId);
+    const qs = params.toString();
+    return this.request(`/reports/monthly${qs ? `?${qs}` : ""}`);
   }
 
-  async getMonthlyReport(month: string): Promise<ReportSummary> {
-    return this.request(`/reports/monthly?month=${month}`);
+  async getMonthlyReport(month: string, accountId?: string): Promise<ReportSummary> {
+    const params = new URLSearchParams({ month });
+    if (accountId) params.set("account_id", accountId);
+    return this.request(`/reports/monthly?${params}`);
   }
 
-  async getBiweeklyReport(start: string, end: string): Promise<ReportSummary> {
-    return this.request(`/reports/biweekly?start=${start}&end=${end}`);
+  async getBiweeklyReport(start: string, end: string, accountId?: string): Promise<ReportSummary> {
+    const params = new URLSearchParams({ start, end });
+    if (accountId) params.set("account_id", accountId);
+    return this.request(`/reports/biweekly?${params}`);
   }
 
   async getCategoryReport(from: string, to: string): Promise<{ categories: import("./types").CategorySummary[]; from: string; to: string }> {
     return this.request(`/reports/categories?from=${from}&to=${to}`);
   }
 
-  async getTrends(months?: number): Promise<{ trends: TrendPoint[]; months: number }> {
-    return this.request(`/reports/trends${months ? `?months=${months}` : ""}`);
+  async getTrends(months?: number, accountId?: string): Promise<{ trends: TrendPoint[]; months: number }> {
+    const params = new URLSearchParams();
+    if (months) params.set("months", String(months));
+    if (accountId) params.set("account_id", accountId);
+    const qs = params.toString();
+    return this.request(`/reports/trends${qs ? `?${qs}` : ""}`);
   }
 
   // Alerts
