@@ -351,6 +351,47 @@ func isExpenseCategory(category string) bool {
 	return expenseCategories[strings.ToLower(category)]
 }
 
+func sanitizeTxnType(parsed *parser.ParsedTransaction) {
+	cat := strings.ToLower(parsed.Category)
+	desc := strings.ToLower(parsed.Description)
+	method := strings.ToLower(parsed.PaymentMethod)
+
+	// credit + expense category → always debit
+	if strings.EqualFold(parsed.Type, "credit") && isExpenseCategory(parsed.Category) {
+		log.Printf("type sanity check: overriding 'credit' → 'debit' (category %q is an expense)", parsed.Category)
+		parsed.Type = "debit"
+		return
+	}
+
+	// debit + income category → always credit
+	if strings.EqualFold(parsed.Type, "debit") && cat == "income" {
+		log.Printf("type sanity check: overriding 'debit' → 'credit' (category is Income)")
+		parsed.Type = "credit"
+		return
+	}
+
+	// card payment is always a debit (unless description says refund)
+	if strings.EqualFold(parsed.Type, "credit") &&
+		(method == "credit_card" || method == "debit_card") &&
+		!strings.Contains(desc, "refund") {
+		log.Printf("type sanity check: overriding 'credit' → 'debit' (payment method %q implies spending)", parsed.PaymentMethod)
+		parsed.Type = "debit"
+		return
+	}
+
+	// named merchant + credit + no sign of refund/deposit/income → debit
+	if strings.EqualFold(parsed.Type, "credit") &&
+		parsed.Merchant != "" &&
+		cat != "income" && cat != "transfer" &&
+		!strings.Contains(desc, "refund") &&
+		!strings.Contains(desc, "deposit") &&
+		!strings.Contains(desc, "received") {
+		log.Printf("type sanity check: overriding 'credit' → 'debit' (merchant %q with no refund/deposit signal)", parsed.Merchant)
+		parsed.Type = "debit"
+		return
+	}
+}
+
 func (s *Service) fallbackCategory(txnType string) string {
 	if strings.EqualFold(txnType, "credit") {
 		return "Income"
@@ -372,10 +413,7 @@ func (s *Service) processEmail(ctx context.Context, body, msgID, emailDate strin
 		return "skipped"
 	}
 
-	if strings.EqualFold(parsed.Type, "credit") && isExpenseCategory(parsed.Category) {
-		log.Printf("type sanity check: overriding 'credit' → 'debit' (category %q is an expense)", parsed.Category)
-		parsed.Type = "debit"
-	}
+	sanitizeTxnType(parsed)
 
 	accountID := s.resolveAccountID(ctx, parsed)
 
@@ -387,7 +425,7 @@ func (s *Service) processEmail(ctx context.Context, body, msgID, emailDate strin
 		).Scan(&accountLastFour)
 	}
 
-	hash := dedup.GenerateHash(parsed.Amount, parsed.Date, parsed.Merchant, parsed.Type, accountLastFour)
+	hash := dedup.GenerateHash(parsed.Amount, emailDate, parsed.Merchant, parsed.Type, accountLastFour)
 	exists, err := s.dedupSvc.Exists(ctx, hash)
 	if err != nil {
 		log.Printf("dedup check error: %v", err)
