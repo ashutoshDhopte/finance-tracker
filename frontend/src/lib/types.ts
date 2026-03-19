@@ -61,6 +61,7 @@ export interface Account {
   account_type: "checking" | "savings" | "credit_card" | "investment";
   last_four?: string;
   debit_card_last_four?: string;
+  inactive_date?: string;
   last_synced_at?: string;
   created_at: string;
   updated_at: string;

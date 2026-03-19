@@ -61,11 +61,12 @@ func (h *IngestHandler) ImportCSV(c *gin.Context) {
 	log.Printf("CSV import: %d rows, bank=%s, headers=%v", len(records)-1, bankType, records[0])
 
 	var accountLastFour string
+	var accountInactiveDate *time.Time
 	if accountIDPtr != nil {
 		_ = h.pool.QueryRow(context.Background(),
-			"SELECT COALESCE(last_four, '') FROM accounts WHERE id = $1",
+			"SELECT COALESCE(last_four, ''), inactive_date FROM accounts WHERE id = $1",
 			*accountIDPtr,
-		).Scan(&accountLastFour)
+		).Scan(&accountLastFour, &accountInactiveDate)
 	}
 
 	var imported, skipped, failed int
@@ -77,6 +78,17 @@ func (h *IngestHandler) ImportCSV(c *gin.Context) {
 			log.Printf("CSV row %d parse error: %v (row: %v)", i+1, err, row)
 			failed++
 			continue
+		}
+
+		if accountInactiveDate != nil {
+			txnDate, parseErr := time.Parse("2006-01-02", txn.date)
+			if parseErr == nil && !txnDate.Before(accountInactiveDate.Truncate(24*time.Hour)) {
+				log.Printf("SKIPPED inactive account CSV txn: account_id=%s inactive_date=%s | row=%d amount=%.2f merchant=%s date=%s type=%s category=%s",
+					*accountIDPtr, accountInactiveDate.Format("2006-01-02"),
+					i+1, txn.amount, txn.merchant, txn.date, txn.txnType, txn.category)
+				skipped++
+				continue
+			}
 		}
 
 		hash := dedup.GenerateHash(txn.amount, txn.date, txn.merchant, txn.txnType, accountLastFour)

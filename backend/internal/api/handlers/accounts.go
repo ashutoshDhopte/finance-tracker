@@ -23,7 +23,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	rows, err := h.pool.Query(context.Background(),
-		`SELECT id, user_id, name, institution, account_type, last_four, debit_card_last_four, last_synced_at, created_at, updated_at
+		`SELECT id, user_id, name, institution, account_type, last_four, debit_card_last_four,
+		        inactive_date, last_synced_at, created_at, updated_at
 		 FROM accounts WHERE user_id = $1 ORDER BY created_at`, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query accounts"})
@@ -35,7 +36,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	for rows.Next() {
 		var a models.Account
 		if err := rows.Scan(&a.ID, &a.UserID, &a.Name, &a.Institution, &a.AccountType,
-			&a.LastFour, &a.DebitCardLastFour, &a.LastSyncedAt, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			&a.LastFour, &a.DebitCardLastFour, &a.InactiveDate, &a.LastSyncedAt, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to scan account"})
 			return
 		}
@@ -86,11 +87,13 @@ func (h *AccountHandler) Update(c *gin.Context) {
 			account_type = COALESCE($5, account_type),
 			last_four = CASE WHEN $6::boolean THEN $7 ELSE last_four END,
 			debit_card_last_four = CASE WHEN $8::boolean THEN $9 ELSE debit_card_last_four END,
+			inactive_date = CASE WHEN $10::boolean THEN $11::date ELSE inactive_date END,
 			updated_at = NOW()
 		WHERE id = $1 AND user_id = $2`,
 		id, userID, req.Name, req.Institution, req.AccountType,
 		req.LastFour != nil, req.LastFour,
 		req.DebitCardLastFour != nil, req.DebitCardLastFour,
+		req.InactiveDate != nil, req.InactiveDate,
 	)
 	if err != nil {
 		log.Printf("update account error: %v", err)

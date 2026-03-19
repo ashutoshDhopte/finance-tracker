@@ -12,6 +12,7 @@ type Account struct {
 	AccountType       string     `json:"account_type"`
 	LastFour          *string    `json:"last_four,omitempty"`
 	DebitCardLastFour *string    `json:"debit_card_last_four,omitempty"`
+	InactiveDate      *time.Time `json:"inactive_date,omitempty"`
 	LastSyncedAt      *time.Time `json:"last_synced_at,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
@@ -31,4 +32,5 @@ type UpdateAccountRequest struct {
 	AccountType       *string `json:"account_type,omitempty"`
 	LastFour          *string `json:"last_four,omitempty"`
 	DebitCardLastFour *string `json:"debit_card_last_four,omitempty"`
+	InactiveDate      *string `json:"inactive_date,omitempty"`
 }

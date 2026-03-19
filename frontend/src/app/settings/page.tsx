@@ -122,6 +122,11 @@ export default function SettingsPage() {
                     <p className="text-sm font-medium text-white">
                       {acc.name}
                       {acc.last_four && <span className="text-zinc-500 font-mono ml-1.5">••{acc.last_four}</span>}
+                      {acc.inactive_date && (
+                        <span className="ml-2 text-xs bg-amber-500/15 text-amber-400 px-1.5 py-0.5 rounded">
+                          Inactive since {formatDate(acc.inactive_date)}
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-zinc-500">
                       {acc.institution} &middot; {acc.account_type.replace("_", " ")}
@@ -371,6 +376,7 @@ function EditAccountModal({ open, account, onClose, onSaved }: { open: boolean; 
   const [accountType, setAccountType] = useState<string>(account.account_type);
   const [lastFour, setLastFour] = useState(account.last_four || "");
   const [debitCardLastFour, setDebitCardLastFour] = useState(account.debit_card_last_four || "");
+  const [inactiveDate, setInactiveDate] = useState(account.inactive_date?.split("T")[0] || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -385,6 +391,7 @@ function EditAccountModal({ open, account, onClose, onSaved }: { open: boolean; 
         account_type: accountType,
         last_four: lastFour || null,
         debit_card_last_four: debitCardLastFour || null,
+        inactive_date: inactiveDate || null,
       });
       onClose();
       onSaved();
@@ -462,6 +469,26 @@ function EditAccountModal({ open, account, onClose, onSaved }: { open: boolean; 
             pattern="\d{0,4}"
           />
           <p className="text-xs text-zinc-600 mt-1">Transactions from this debit card will be linked to this account</p>
+        </div>
+
+        <div>
+          <label className="block text-xs text-zinc-400 mb-1">Inactive date</label>
+          <input
+            type="date"
+            value={inactiveDate}
+            onChange={(e) => setInactiveDate(e.target.value)}
+            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <p className="text-xs text-zinc-600 mt-1">Transactions on or after this date will be skipped during import</p>
+          {inactiveDate && (
+            <button
+              type="button"
+              onClick={() => setInactiveDate("")}
+              className="text-xs text-amber-400 hover:text-amber-300 mt-1 cursor-pointer"
+            >
+              Clear inactive date (reactivate)
+            </button>
+          )}
         </div>
 
         <div className="flex justify-end gap-3 pt-2">

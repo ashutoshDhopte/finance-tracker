@@ -419,10 +419,23 @@ func (s *Service) processEmail(ctx context.Context, body, msgID, emailDate strin
 
 	accountLastFour := ""
 	if accountID != nil {
+		var inactiveDate *time.Time
 		_ = s.pool.QueryRow(ctx,
-			"SELECT COALESCE(last_four, '') FROM accounts WHERE id = $1",
+			"SELECT COALESCE(last_four, ''), inactive_date FROM accounts WHERE id = $1",
 			*accountID,
-		).Scan(&accountLastFour)
+		).Scan(&accountLastFour, &inactiveDate)
+
+		if inactiveDate != nil {
+			txnDate, err := time.Parse("2006-01-02", parsed.Date)
+			if err == nil && !txnDate.Before(inactiveDate.Truncate(24*time.Hour)) {
+				log.Printf("SKIPPED inactive account txn: account_id=%s inactive_date=%s | amount=%.2f merchant=%s date=%s type=%s category=%s method=%s confidence=%.0f%% description=%s account_last4=%s from_account_last4=%s email_msg_id=%s",
+					*accountID, inactiveDate.Format("2006-01-02"),
+					parsed.Amount, parsed.Merchant, parsed.Date, parsed.Type, parsed.Category,
+					parsed.PaymentMethod, parsed.Confidence*100, parsed.Description,
+					parsed.AccountLastFour, parsed.FromAccountLastFour, msgID)
+				return "skipped"
+			}
+		}
 	}
 
 	hash := dedup.GenerateHash(parsed.Amount, emailDate, parsed.Merchant, parsed.Type, accountLastFour)

@@ -165,6 +165,7 @@ class ApiClient {
     account_type?: string;
     last_four?: string | null;
     debit_card_last_four?: string | null;
+    inactive_date?: string | null;
   }): Promise<void> {
     await this.request(`/accounts/${id}`, {
       method: "PUT",
