@@ -26,6 +26,24 @@ func (h *SyncHandler) SyncGmail(c *gin.Context) {
 		return
 	}
 
+	ctx := context.Background()
+
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	if startDate != "" && endDate != "" {
+		imported, skipped, failed := h.gmailSvc.SyncDateRange(ctx, startDate, endDate)
+		c.JSON(http.StatusOK, gin.H{
+			"message":    "sync complete",
+			"start_date": startDate,
+			"end_date":   endDate,
+			"imported":   imported,
+			"skipped":    skipped,
+			"failed":     failed,
+		})
+		return
+	}
+
 	days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
 	if days < 1 {
 		days = 1
@@ -34,7 +52,6 @@ func (h *SyncHandler) SyncGmail(c *gin.Context) {
 		days = 365
 	}
 
-	ctx := context.Background()
 	imported, skipped, failed := h.gmailSvc.SyncDays(ctx, days)
 
 	c.JSON(http.StatusOK, gin.H{

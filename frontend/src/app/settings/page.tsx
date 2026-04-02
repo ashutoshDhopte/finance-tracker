@@ -506,16 +506,30 @@ function EditAccountModal({ open, account, onClose, onSaved }: { open: boolean; 
 
 function SyncSection() {
   const [syncing, setSyncing] = useState(false);
+  const [rangeMode, setRangeMode] = useState<"preset" | "custom">("preset");
   const [days, setDays] = useState(30);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [result, setResult] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [error, setError] = useState("");
 
   async function handleSync() {
+    if (rangeMode === "custom" && (!startDate || !endDate)) {
+      setError("Please select both start and end dates");
+      return;
+    }
+    if (rangeMode === "custom" && startDate > endDate) {
+      setError("Start date must be before end date");
+      return;
+    }
     setSyncing(true);
     setError("");
     setResult(null);
     try {
-      const res = await api.syncGmail(days);
+      const params = rangeMode === "custom"
+        ? { start_date: startDate, end_date: endDate }
+        : { days };
+      const res = await api.syncGmail(params);
       setResult(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sync failed");
@@ -543,35 +557,70 @@ function SyncSection() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
-          <div>
-            <label className="block text-xs text-zinc-400 mb-1">Time range</label>
-            <select
-              value={days}
-              onChange={(e) => setDays(Number(e.target.value))}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+            <div>
+              <label className="block text-xs text-zinc-400 mb-1">Time range</label>
+              <select
+                value={rangeMode === "custom" ? "custom" : String(days)}
+                onChange={(e) => {
+                  if (e.target.value === "custom") {
+                    setRangeMode("custom");
+                  } else {
+                    setRangeMode("preset");
+                    setDays(Number(e.target.value));
+                  }
+                }}
+                disabled={syncing}
+                className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                <option value={1}>Last 24 hours</option>
+                <option value={7}>Last 7 days</option>
+                <option value={14}>Last 14 days</option>
+                <option value={30}>Last 30 days</option>
+                <option value={60}>Last 60 days</option>
+                <option value={90}>Last 90 days</option>
+                <option value="custom">Custom dates</option>
+              </select>
+            </div>
+            <button
+              onClick={handleSync}
               disabled={syncing}
-              className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <option value={1}>Last 24 hours</option>
-              <option value={7}>Last 7 days</option>
-              <option value={14}>Last 14 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={60}>Last 60 days</option>
-              <option value={90}>Last 90 days</option>
-            </select>
+              {syncing ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              {syncing ? "Syncing..." : "Sync Emails"}
+            </button>
           </div>
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {syncing ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
-            {syncing ? "Syncing..." : "Sync Emails"}
-          </button>
+
+          {rangeMode === "custom" && (
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Start date</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  disabled={syncing}
+                  className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">End date</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  disabled={syncing}
+                  className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {result && (

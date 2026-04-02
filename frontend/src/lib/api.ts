@@ -242,8 +242,15 @@ class ApiClient {
   }
 
   // Sync
-  async syncGmail(days: number = 30): Promise<{ message: string; days: number; imported: number; skipped: number; failed: number }> {
-    return this.request(`/sync/gmail?days=${days}`, { method: "POST" });
+  async syncGmail(params?: { days?: number; start_date?: string; end_date?: string }): Promise<{ message: string; imported: number; skipped: number; failed: number }> {
+    const qs = new URLSearchParams();
+    if (params?.start_date && params?.end_date) {
+      qs.set("start_date", params.start_date);
+      qs.set("end_date", params.end_date);
+    } else {
+      qs.set("days", String(params?.days ?? 30));
+    }
+    return this.request(`/sync/gmail?${qs}`, { method: "POST" });
   }
 
   // CSV Import

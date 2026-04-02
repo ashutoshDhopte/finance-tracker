@@ -158,6 +158,59 @@ func (s *Service) SyncDays(ctx context.Context, days int) (imported, skipped, fa
 	return
 }
 
+func (s *Service) SyncDateRange(ctx context.Context, startDate, endDate string) (imported, skipped, failed int) {
+	log.Printf("syncing gmail for bank emails from %s to %s...", startDate, endDate)
+
+	start, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		log.Printf("invalid start_date: %v", err)
+		return
+	}
+	end, err := time.Parse("2006-01-02", endDate)
+	if err != nil {
+		log.Printf("invalid end_date: %v", err)
+		return
+	}
+	end = end.AddDate(0, 0, 1)
+
+	query := fmt.Sprintf("%s after:%d before:%d", s.query, start.Unix(), end.Unix())
+	msgs, err := s.gmailSvc.Users.Messages.List("me").Q(query).MaxResults(500).Do()
+	if err != nil {
+		log.Printf("gmail list error: %v", err)
+		return
+	}
+
+	log.Printf("found %d potential bank emails", len(msgs.Messages))
+
+	for _, msg := range msgs.Messages {
+		full, err := s.gmailSvc.Users.Messages.Get("me", msg.Id).Format("full").Do()
+		if err != nil {
+			log.Printf("gmail get message error: %v", err)
+			failed++
+			continue
+		}
+
+		body := extractBody(full)
+		if body == "" {
+			continue
+		}
+
+		emailDate := extractEmailDate(full)
+		result := s.processEmail(ctx, body, msg.Id, emailDate)
+		switch result {
+		case "imported":
+			imported++
+		case "skipped":
+			skipped++
+		default:
+			failed++
+		}
+	}
+
+	log.Printf("sync complete: %d imported, %d skipped, %d failed", imported, skipped, failed)
+	return
+}
+
 func (s *Service) poll(ctx context.Context) {
 	log.Println("polling gmail for bank emails...")
 
